@@ -1,10 +1,6 @@
 # Carga em Lote (SIP + SEI)
 
-Módulos de extensão para o **SEI** e o **SIP** (Sistema de Permissões, TRF4) que fazem carga
-em massa de unidades, hierarquia, usuários, permissões e demais cadastros administrativos a
-partir de uma planilha — chamando diretamente as classes de regra de negócio (`*RN`) que as
-próprias telas administrativas já usam, **sem automação de navegador e sem tocar em nenhum
-arquivo do core** do SEI/SIP.
+Módulos de extensão para o **SEI** e o **SIP** (Sistema de Permissões, TRF4) que fazem carga em massa de unidades, hierarquia, usuários, permissões e demais cadastros administrativos a partir de uma planilha — chamando diretamente as classes de regra de negócio (`*RN`) que as próprias telas administrativas já usam, **sem automação de navegador e sem tocar em nenhum arquivo do core** do SEI ou do SIP.
 
 ## 📚 Sumário
 
@@ -26,155 +22,95 @@ arquivo do core** do SEI/SIP.
 <a name="introducao"></a>
 ## ℹ️ Introdução
 
-Este repositório contém dois módulos de extensão — um para o **SEI**, outro para o **SIP** —
-que automatizam o cadastro em massa de unidades, hierarquia, usuários, permissões e demais
-parametrizações administrativas, a partir de uma planilha.
+Este repositório contém **dois módulos** — um para o **SEI**, outro para o **SIP** —
+que automatizam o cadastro em massa de unidades, hierarquia, usuários, permissões e demais parametrizações administrativas, a partir de uma planilha.
 
-Segue estritamente o modelo de extensão oficial do TRF4 (documentado no PDF *SEI-Módulos*):
-um módulo é só uma classe que estende `SeiIntegracao`/`SipIntegracao` e é despachada pelo
-`controlador.php` **depois** de toda ação nativa — genuinamente aditivo, nunca sobrescreve uma
-ação existente nem altera arquivo do core.
+Segue estritamente o modelo de extensão oficial do TRF4, conforme documentação fornecida pelo Tribunal: um módulo é só uma classe que estende `SeiIntegracao`/`SipIntegracao` e é despachada pelo `controlador.php` **depois** de toda ação nativa — genuinamente aditivo, nunca sobrescreve uma ação existente nem altera arquivo do core.
 
 Seu uso se aplica a contextos como:
 
-- Implantação inicial de um novo ambiente SEI/SIP, com necessidade de carga massiva de
-  unidades, usuários, assuntos e permissões.
-- Manutenções periódicas que demandam atualização ou complementação de cadastros em larga
-  escala (alteração da estrutura organizacional, admissão de grande quantidade de novos
-  usuários por concurso, mudança de carreira etc.).
+- Implantação inicial de um novo ambiente SEI/SIP, com necessidade de carga massiva de unidades, usuários, assuntos e permissões.
+- Manutenções periódicas que demandam atualização ou complementação de cadastros em larga escala (alteração da estrutura organizacional, admissão de grande quantidade de novos usuários por concurso, mudança de carreira etc.).
 
 ### Origem
 
-O ponto de partida foi o repositório [`pengovbr/macros-sei-sip`](https://github.com/pengovbr/macros-sei-sip),
-que resolve o mesmo problema via macros de RPA (UI.Vision) que abrem o navegador e simulam
-cliques nas telas administrativas, lendo dados de `.csv`. Funciona, mas é lento, frágil a
-mudanças de interface, e depende de um navegador aberto e logado durante toda a execução.
+O ponto de partida foi o repositório [`pengovbr/macros-sei-sip`](https://github.com/pengovbr/macros-sei-sip), que resolve o mesmo problema via macros de RPA (UI.Vision) que abrem o navegador e simulam cliques nas telas administrativas, lendo dados de `.csv`. Funciona, mas é lento, frágil a mudanças de interface, e depende de um navegador aberto e logado durante toda a execução.
 
-Este projeto nasceu como uma tentativa de resolver o mesmo problema de forma mais integrada ao
-SEI — e no processo deixou de ser uma reimplementação das macros e virou outra coisa: em vez de
-automatizar a interface, opera diretamente na camada de regra de negócio, dentro do próprio
-framework de módulos do SEI/SIP. Isso muda o resultado de forma relevante: execução em
-segundos em vez de minutos, nenhuma dependência de navegador/sessão aberta, relatório de
-resultado linha a linha, suporte nativo a `.xlsx`/`.ods` além de `.csv`, e processamento
-particionado em lotes para arquivos grandes sem esbarrar em timeout de servidor.
+Este projeto nasceu como uma tentativa de resolver o mesmo problema de forma mais integrada ao SEI — e no processo deixou de ser uma reimplementação das macros e virou outra coisa: em vez de automatizar a interface, opera diretamente na camada de regra de negócio, dentro do próprio framework de módulos do SEI/SIP. Isso muda o resultado de forma relevante: execução em segundos em vez de minutos, nenhuma dependência de navegador/sessão aberta, relatório de resultado linha a linha, suporte nativo a `.xlsx`/`.ods` além de `.csv`, e processamento particionado em lotes para arquivos grandes sem esbarrar em timeout de servidor.
 
 <a name="a-quem-se-destina"></a>
 ## 👨‍🔧 A quem se destina
 
-Usuários com **perfil de Administração do SEI/SIP** — o mesmo público das macros originais.
-Diferente delas, aqui o acesso é controlado por um perfil próprio (`Carga em Lote` no SIP,
-`Carga em Lote (SEI)` no SEI), criado pelo script de instalação de cada módulo e atribuído
-manualmente a quem for operar as cargas.
+Usuários com **perfil de Administração do SEI/SIP** — o mesmo público das macros originais. Diferente delas, aqui o acesso é controlado por um perfil próprio (`Carga em Lote` no SIP, `Carga em Lote (SEI)` no SEI), criado pelo script de instalação de cada módulo e atribuído manualmente a quem for operar as cargas.
 
 > [!WARNING]
-> Estes módulos alteram diretamente cadastros administrativos do SEI/SIP. Antes de usar em
-> produção:
+> Estes módulos alteram diretamente cadastros administrativos do SEI/SIP. Antes de usar em produção:
 > - Teste primeiro em ambiente de homologação;
-> - Confira cuidadosamente os dados da planilha antes de enviar — o arquivo é a fonte de
->   verdade, e algumas operações (Dados Complementares de Unidade, Contato de Usuários)
->   **sobrescrevem** o que já existe;
+> - Confira **cuidadosamente** os dados das planilhas antes de enviar — os arquivos de referência são as fontes da verdade, e algumas operações (Dados Complementares de Unidade, Contato de Usuários) **sobrescrevem** o que já existe;
 > - Garanta que quem for operar tenha o perfil correto atribuído.
 
 <a name="como-instalar"></a>
 ## 📥 Como instalar
 
-Cada módulo é autocontido — basta copiar a pasta para dentro da árvore do SEI/SIP e seguir o
-passo a passo de cada um:
+Cada módulo é autocontido — basta copiar a pasta para dentro da árvore do SEI/SIP e seguir o passo a passo de cada um:
 
 - [`sip/web/modulos/cargaEmLote/sipCargaEmLote/instrucoes.txt`](sip/web/modulos/cargaEmLote/sipCargaEmLote/instrucoes.txt)
 - [`sei/web/modulos/cargaEmLote/seiCargaEmLote/instrucoes.txt`](sei/web/modulos/cargaEmLote/seiCargaEmLote/instrucoes.txt)
 
-Resumo do processo (idêntico para os dois): ativar a chave `Modulos` no arquivo de
-configuração (`ConfiguracaoSip.php`/`ConfiguracaoSEI.php`), reiniciar o Apache/PHP, e rodar o
-script de instalação (`scripts/instalar.php`) — cria recurso, perfil e item de menu de forma
-idempotente, usando o mesmo mecanismo (`InfraScriptVersao` + `ScriptSip`) que o próprio TRF4
-usa em `sip/scripts/atualizar_recursos_sei.php`. Só falta atribuir o perfil criado a quem for
-operar as cargas.
+Resumo do processo (idêntico para os dois): ativar a chave `Modulos` no arquivo de configuração (`ConfiguracaoSip.php`/`ConfiguracaoSEI.php`), reiniciar o Apache/PHP, e rodar o script de instalação (`scripts/instalar.php`) — cria recurso, perfil e item de menu de forma idempotente, usando o mesmo mecanismo (`InfraScriptVersao` + `ScriptSip`) que o próprio TRF4 usa em `sip/scripts/atualizar_recursos_sei.php`. Em seguida, atribuir o perfil criado a quem for operar as cargas.
 
 > [!IMPORTANT]
-> Depois de atribuir o perfil a um usuário, é preciso fazer **logout/login** para o item de
-> menu aparecer — o menu de cada sistema é montado uma única vez no login e fica guardado na
-> sessão (comportamento genérico do framework, não peculiaridade destes módulos).
+> Depois de atribuir o perfil a um usuário, é preciso fazer **logout/login** para o item de menu aparecer — o menu de cada sistema é montado uma única vez no login e fica guardado na sessão (comportamento genérico do framework, não peculiaridade destes módulos).
 
 <a name="como-usar"></a>
 ## ▶️ Como usar
 
-1. Acesse a tela do módulo (menu `Carga em Lote`, no SIP na raiz do menu; no SEI dentro de
-   `Administração`).
+1. Acesse a tela do módulo (menu `Carga em Lote`, no SIP na raiz do menu; no SEI dentro de `Administração`).
 2. Escolha o **tipo de carga** desejado no seletor.
-3. Selecione o arquivo `.csv`, `.xlsx` ou `.ods` já preenchido — a tela detecta o formato pela
-   extensão do arquivo enviado.
-4. Clique em **Processar**. Se o arquivo tiver muitas linhas, a tela mostra "X de Y linhas
-   processadas" e se recarrega sozinha até concluir — não feche nem atualize a janela
-   manualmente enquanto isso.
-5. Ao final, confira o relatório: quantas linhas foram cadastradas/atualizadas, quantas já
-   existiam (puladas) e quantas deram erro, com a mensagem de erro específica de cada linha.
-6. Use o botão **Imprimir** (disponível só ao concluir) para gerar um PDF do relatório, se
-   precisar de um registro da execução.
+3. Selecione o arquivo `.csv`, `.xlsx` ou `.ods` já preenchido — a tela detecta o formato pela extensão do arquivo enviado.
+4. Clique em **Processar**. Se o arquivo tiver muitas linhas, a tela mostra "X de Y linhas processadas" e se recarrega sozinha até concluir — não feche nem atualize a janela manualmente enquanto isso.
+5. Ao final, confira o relatório: quantas linhas foram cadastradas/atualizadas, quantas já existiam (puladas) e quantas deram erro, com a mensagem de erro específica de cada linha.
+6. Use o botão **Imprimir** (disponível só ao concluir) para gerar um PDF do relatório, se precisar de um registro da execução.
 
 <a name="orientacoes-gerais-e-observacoes"></a>
 ## 📝 Orientações gerais e observações
 
 > [!CAUTION]
-> ### 🚫 NÃO ALTERAR AS COLUNAS DAS TABELAS
-> Os arquivos de exemplo em `exemplos/`, dentro da pasta de cada módulo, definem a
-> **estrutura exata** esperada por cada tipo de carga: quantidade de colunas, ordem e
-> significado de cada uma. As colunas são lidas **pela posição**, não pelo nome do cabeçalho.
+> ### 🚫 NÃO ALTERAR AS COLUNAS DAS TABELAS DE REFERÊNCIA
+> Os arquivos de exemplo em `exemplos/`, dentro da pasta de cada módulo, definem a **estrutura exata** esperada por cada tipo de carga: quantidade de colunas, ordem e significado de cada uma. As colunas são lidas **pela posição**, não pelo nome do cabeçalho.
 >
 > - **Não** insira, remova, renomeie ou reordene colunas.
-> - **Não** insira uma linha de cabeçalho diferente da dos arquivos de exemplo — a primeira
->   linha é sempre ignorada como cabeçalho, então seu conteúdo exato não importa, mas a
->   **posição das colunas de dado abaixo dela, sim**.
-> - Baixe o exemplo do tipo de carga que for usar e **edite apenas o conteúdo das células**,
->   preservando a estrutura original.
-> - Se algum valor contiver vírgula (em arquivo `.csv`), coloque o valor inteiro entre aspas
->   — por exemplo, `Divisão de Obras, Contratos e Serviços Gerais` deve ser gravado como
+> - **Não** insira uma linha de cabeçalho diferente da dos arquivos de exemplo — a primeira linha é sempre ignorada como cabeçalho, então seu conteúdo exato não importa, mas a **posição das colunas de dado abaixo dela, sim**.
+> - Baixe o exemplo do tipo de carga que for usar e **edite apenas o conteúdo das células**, preservando a estrutura original.
+> - Caso utilize o formato `.csv`, se algum valor contiver vírgula, coloque o valor inteiro entre aspas, por exemplo, `Divisão de Obras, Contratos e Serviços Gerais` deve ser gravado como
 >   `"Divisão de Obras, Contratos e Serviços Gerais"`.
 
 ### Formatos aceitos
 
-`.csv`, `.xlsx` e `.ods` — mesma estrutura de colunas nos três formatos. Arquivos de
-referência nos três formatos ficam em `exemplos/`, dentro da pasta de cada módulo.
+`.csv`, `.xlsx` e `.ods` — mesma estrutura de colunas nos três formatos. Arquivos de referência nos três formatos ficam em `exemplos/`, dentro da pasta de cada módulo.
 
 > [!NOTE]
-> Se for montar a planilha no Excel e exportar como `.csv`, cuidado com a configuração de
-> regionalização do Brasil: o Excel tende a usar ponto e vírgula (`;`) como separador em vez
-> de vírgula, e codificação `ISO-8859-1` em vez de `UTF-8`. Prefira `.xlsx` diretamente (sem
-> converter para `.csv` manualmente) para evitar esse problema, ou use um editor de planilhas
-> que gere `.csv` em UTF-8 com vírgula (o Google Sheets, por exemplo, faz isso corretamente).
+> Se for montar a planilha no Excel e exportar como `.csv`, cuidado com a configuração de regionalização do Brasil: o Excel tende a usar ponto e vírgula (`;`) como separador em vez de vírgula, e codificação `ISO-8859-1` em vez de `UTF-8`. Prefira `.xlsx` diretamente (sem converter para `.csv` manualmente) para evitar esse problema, ou use um editor de planilhas que gere `.csv` em UTF-8 com vírgula (o Google Sheets, por exemplo, faz isso corretamente).
 
 ### Comportamento em caso de registro já existente
 
-- **Unidades, Hierarquia, Usuários, Primeiras Permissões, Assuntos, Tipos de Processo**
-  (operações de criação): pula a linha e reporta "já existia" — nunca sobrescreve.
-- **Dados Complementares de Unidade, Contato de Usuários** (operações de atualização): o
-  arquivo é sempre tratado como fonte de verdade — sobrescreve e reporta "atualizado". Campos
-  vazios na planilha **preservam** o valor já existente (não apagam).
+- **Unidades, Hierarquia, Usuários, Primeiras Permissões, Assuntos, Tipos de Processo** (operações de criação): pula a linha e reporta "já existia" — nunca sobrescreve.
+- **Dados Complementares de Unidade, Contato de Usuários** (operações de atualização): o arquivo é sempre tratado como fonte de verdade — sobrescreve e reporta "atualizado". Campos vazios na planilha **preservam** o valor já existente (não apagam).
 
 ### Processamento em lotes (arquivos grandes)
 
-Arquivos com muitas linhas são processados em lotes de `CargaEmLoteRN::TAMANHO_LOTE` (50 por
-padrão) — a tela se recarrega sozinha automaticamente até concluir. Existe porque o timeout
-que interromperia uma carga grande normalmente não é do PHP — é do servidor web/proxy na
-frente dele, fora do alcance de um módulo que só acrescenta arquivos a uma instalação já
-existente. Ajuste a constante no topo de `rn/CargaEmLoteRN.php` se a instalação de destino
-tiver um timeout mais agressivo.
+Arquivos com muitas linhas são processados em lotes de `CargaEmLoteRN::TAMANHO_LOTE` (50 por padrão) — a tela se recarrega sozinha automaticamente até concluir. Existe porque o timeout que interromperia uma carga grande normalmente não é do PHP — é do servidor web/proxy nafrente dele, fora do alcance de um módulo que só acrescenta arquivos a uma instalação já existente. Ajuste a constante no topo de `rn/CargaEmLoteRN.php` se a instalação de destino tiver um timeout mais agressivo.
 
 ### Ordem de execução importa
 
-A carga de **Unidades e Hierarquia** (SIP) precisa rodar antes da carga de **Dados
-Complementares de Unidade** (SEI) — esta última só atualiza unidades que já existem (criadas
-pelo SIP e replicadas ao SEI). Da mesma forma, **Assuntos** (SEI) deve rodar antes de **Tipos
-de Processo** (SEI) sempre que o arquivo de Tipos de Processo sugerir códigos de assunto que
-ainda não existem na Tabela de Assuntos atual.
+A carga de **Unidades e Hierarquia** (SIP) precisa rodar antes da carga de **Dados Complementares de Unidade** (SEI) — esta última só atualiza unidades que já existem (criadas pelo SIP e replicadas ao SEI). Da mesma forma, **Assuntos** (SEI) deve rodar antes de **Tipos de Processo** (SEI) sempre que o arquivo de Tipos de Processo sugerir códigos de assunto que ainda não existem na Tabela de Assuntos atual.
 
 ---
 
 <a name="sip-unidades"></a>
 ## 🏢 SIP — Unidades e Hierarquia
 
-Cadastra unidades administrativas e posiciona cada uma na hierarquia, numa única carga (mesmo
-arquivo serve para as duas operações).
+Cadastra unidades administrativas e posiciona cada uma na hierarquia, numa única carga (mesmo arquivo serve para as duas operações).
 
 **Colunas** (`exemploUnidades.csv`):
 
@@ -191,8 +127,7 @@ arquivo serve para as duas operações).
 | 13-15 | CNPJ, telefone, site | | Idem — consumidas pela carga de Dados Complementares (SEI) |
 
 > [!IMPORTANT]
-> A hierarquia é cadastrada **de cima para baixo** — as unidades "raiz" (coluna 4 em branco)
-> devem vir antes das que dependem delas. O arquivo não é reordenado automaticamente.
+> A hierarquia é cadastrada **de cima para baixo** — as unidades "raiz" (coluna 4 em branco) devem vir antes das que dependem delas. O arquivo não é reordenado automaticamente.
 
 **Exemplo** (5 primeiras linhas de `exemploUnidades.csv`):
 
@@ -207,9 +142,7 @@ arquivo serve para as duas operações).
 <a name="sip-usuarios"></a>
 ## 🙋 SIP — Usuários e Primeiras Permissões
 
-Cadastra usuários e concede a primeira permissão de cada um, numa única carga (mesmo arquivo
-serve para as duas operações) — viabiliza o acesso inicial ao SEI. Outras permissões devem ser
-concedidas depois, pelo próprio SIP (`Permissões` > `Atribuição em Bloco`).
+Cadastra usuários e concede a primeira permissão de cada um, numa única carga (mesmo arquivo serve para as duas operações) — viabiliza o acesso inicial ao SEI. Outras permissões devem ser concedidas depois, pelo próprio SIP (`Permissões` > `Atribuição em Bloco`).
 
 **Colunas** (`exemploUsuarios.csv`):
 
@@ -294,9 +227,7 @@ Unidade acima (sempre sobrescreve, campo vazio preserva o valor existente).
 <a name="sei-assuntos"></a>
 ## 🗄️ SEI — Assuntos
 
-Cadastra assuntos na Tabela de Assuntos (CCD/TTD) marcada como atual — ou em outra, à escolha,
-via campo opcional na tela. **Operação de criação**: pula e reporta "já existia" se o código já
-estiver cadastrado na tabela escolhida.
+Cadastra assuntos na Tabela de Assuntos (CCD/TTD) marcada como atual — ou em outra, à escolha, via campo opcional na tela. **Operação de criação**: pula e reporta "já existia" se o código já estiver cadastrado na tabela escolhida.
 
 **Colunas** (`exemploAssuntos.csv`):
 
@@ -322,9 +253,7 @@ estiver cadastrado na tabela escolhida.
 <a name="sei-tipos"></a>
 ## 🗂️ SEI — Tipos de Processo
 
-Cadastra tipos de processo, com assuntos sugeridos, restrições de órgão/unidade e níveis de
-acesso permitidos/sugerido. **Operação de criação**: duplicidade verificada pelo par
-(Nome, exclusivoOuvidoria) — pula e reporta "já existia" se o par já estiver cadastrado.
+Cadastra tipos de processo, com assuntos sugeridos, restrições de órgão/unidade e níveis de acesso permitidos/sugerido. **Operação de criação**: duplicidade verificada pelo par (Nome, exclusivoOuvidoria) — pula e reporta "já existia" se o par já estiver cadastrado.
 
 **Colunas** (`exemploTiposDeProcesso.csv`):
 
