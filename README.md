@@ -1,20 +1,33 @@
 # Carga em Lote (SIP + SEI)
 
-Módulos de extensão para o **SEI** e o **SIP** (Sistema de Permissões, TRF4) que substituem
-as macros de RPA do repositório [`pengovbr/macros-sei-sip`](https://github.com/pengovbr/macros-sei-sip)
-por chamadas diretas às classes de regra de negócio (`*RN`) que as próprias telas administrativas
-já usam — sem automação de navegador, sem depender de uma sessão logada aberta durante toda a
-execução, e **sem tocar em nenhum arquivo do core** do SEI/SIP.
+Módulos de extensão para o **SEI** e o **SIP** (Sistema de Permissões, TRF4) que fazem carga
+em massa de unidades, hierarquia, usuários, permissões e demais cadastros administrativos a
+partir de planilha — chamando diretamente as classes de regra de negócio (`*RN`) que as
+próprias telas administrativas já usam, sem automação de navegador e **sem tocar em nenhum
+arquivo do core** do SEI/SIP.
 
 Segue estritamente o modelo de extensão oficial do TRF4 (documentado no PDF
 *SEI-Módulos*): um módulo é só uma classe que estende `SeiIntegracao`/`SipIntegracao` e é
 despachada pelo `controlador.php` **depois** de toda ação nativa — genuinamente aditivo, nunca
 sobrescreve uma ação existente.
 
-## O que cada módulo cobre
+## Origem
 
-As 8 macros do repositório original de RPA (`1.cargaUnidades` até `8.cargaTiposDeProcesso`) se
-dividem entre as que rodam no SIP e as que rodam no SEI:
+O ponto de partida foi o repositório [`pengovbr/macros-sei-sip`](https://github.com/pengovbr/macros-sei-sip),
+que resolve o mesmo problema (carga inicial/manutenção em massa) via macros de RPA (UI.Vision)
+que abrem o navegador e simulam cliques nas telas administrativas, lendo dados de `.csv`.
+Funciona, mas é lento, frágil a mudanças de interface, e depende de um navegador aberto e
+logado durante toda a execução.
+
+Este projeto nasceu como uma tentativa de resolver o mesmo problema de forma mais integrada ao
+SEI — e no processo deixou de ser uma reimplementação das macros e virou outra coisa: em vez de
+automatizar a interface, opera diretamente na camada de regra de negócio, dentro do próprio
+framework de módulos do SEI/SIP. Isso muda o resultado de forma relevante: execução em
+segundos em vez de minutos, nenhuma dependência de navegador/sessão aberta, relatório de
+resultado linha a linha, suporte nativo a `.xlsx`/`.ods` além de `.csv`, e processamento
+particionado em lotes para arquivos grandes sem esbarrar em timeout de servidor.
+
+## O que cada módulo cobre
 
 ### `sip/` — módulo SIP (`SipCargaEmLoteIntegracao`)
 
@@ -54,8 +67,8 @@ guardado na sessão (comportamento genérico do framework, não peculiaridade de
 ## Formato de entrada
 
 Upload de arquivo direto na tela (sem colar texto), em três formatos — `.csv`, `.xlsx` ou
-`.ods`, mesmas colunas dos arquivos de exemplo do repositório de macros original. Arquivos de
-referência nos três formatos ficam em `exemplos/`, dentro da pasta de cada módulo.
+`.ods`. Arquivos de referência nos três formatos ficam em `exemplos/`, dentro da pasta de cada
+módulo.
 
 ## Processamento em lotes (arquivos grandes)
 
