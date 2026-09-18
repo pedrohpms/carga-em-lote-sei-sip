@@ -1,6 +1,6 @@
 # Carga em Lote (SIP + SEI)
 
-Módulos de extensão para o **SEI** e o **SIP** (Sistema de Permissões, TRF4) que fazem carga em massa de unidades, hierarquia, usuários, permissões e demais cadastros administrativos a partir de uma planilha — chamando diretamente as classes de regra de negócio (`*RN`) que as próprias telas administrativas já usam, **sem automação de navegador e sem tocar em nenhum arquivo do core** do SEI ou do SIP.
+Módulos de extensão para o Sistema Eletrônico de Informações - **SEI** e o Sistema de Permissões - **SIP**, que fazem carga em massa de unidades, hierarquia, usuários, permissões e demais cadastros administrativos a partir de uma planilha — chamando diretamente as classes de regra de negócio (`*RN`) que as próprias telas administrativas já usam, **sem automação de navegador e sem tocar em nenhum arquivo do core** do SEI ou do SIP.
 
 ## 📚 Sumário
 
