@@ -1,16 +1,21 @@
 <?
 /**
- * Modulo SEI Carga em Lote (Sprint 2)
+ * Modulo SEI - Carga em Lote
  *
- * Completa, do lado SEI, o cadastro de unidades ja criadas pelo modulo SIP equivalente
- * (Sprint 1): dados complementares de unidade (endereco, telefone, site, CNPJ, e-mails),
- * chamando diretamente as classes de regra de negocio ja existentes no SEI (UnidadeRN,
- * ContatoRN, EmailUnidadeRN), seguindo o modelo de modulos documentado pelo TRF4: nenhum
- * arquivo do core e alterado, o modulo so acrescenta.
+ * Completa, do lado SEI, cadastros de unidades e usuarios ja criados pelo modulo SIP
+ * equivalente (sigla/hierarquia/permissao ficam no SIP; os dados complementares abaixo sao
+ * campos que so existem do lado SEI), chamando diretamente as classes de regra de negocio ja
+ * existentes no SEI, seguindo o modelo de modulos documentado pelo TRF4: nenhum arquivo do
+ * core e alterado, o modulo so acrescenta.
  *
- * As demais operacoes que rodam no SEI (contato de usuarios, assuntos, tipos de processo)
- * devem crescer dentro desta mesma classe/rn em sprints seguintes, mesmo padrao de
- * crescimento do modulo SIP na Sprint 1.
+ * Cobre as 4 operacoes que rodam no SEI (nao no SIP):
+ * - Dados Complementares de Unidade (endereco, telefone, site, CNPJ, e-mails)
+ * - Contato de Usuarios (endereco, cargo, CPF, RG, telefones, conjuge etc.)
+ * - Assuntos (Tabela de Assuntos / CCD-TTD)
+ * - Tipos de Processo (com assuntos sugeridos, restricoes de orgao/unidade, niveis de acesso)
+ *
+ * Toda a logica de negocio vive em rn/CargaEmLoteRN.php - esta classe e so o ponto de
+ * extensao que o framework do SEI reconhece (ver processarControlador() abaixo).
  */
 
 class SeiCargaEmLoteIntegracao extends SeiIntegracao {

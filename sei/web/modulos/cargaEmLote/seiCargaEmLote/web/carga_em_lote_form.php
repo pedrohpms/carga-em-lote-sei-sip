@@ -62,6 +62,8 @@ $objTabelaAssuntosDTOLista->setOrd('Nome', InfraDTO::$TIPO_ORDENACAO_ASC);
 $objTabelaAssuntosRNLista = new TabelaAssuntosRN();
 $arrTabelasAssuntos = $objTabelaAssuntosRNLista->listar($objTabelaAssuntosDTOLista);
 
+// ETAPA 1 de 3 - novo envio do formulario ou recarregamento automatico de um lote em
+// andamento (ver ETAPA 2 logo abaixo) - o bloco try/catch inteiro cobre as duas ETAPAS.
 try {
   if (isset($_POST['sbmProcessar'])) {
     // Novo envio: descarta qualquer carga anterior ainda em andamento (ex.: usuario mandou
@@ -109,6 +111,9 @@ try {
     );
   }
 
+  // ETAPA 2 de 3 - roda a cada requisicao (POST inicial OU GET de recarregamento
+  // automatico): processa UM lote (CargaEmLoteRN::TAMANHO_LOTE linhas) e acumula o resultado
+  // na sessao. So para de rodar quando offset >= total (carga concluida).
   if (isset($_SESSION[CHAVE_ESTADO_SESSAO])) {
     $arrEstado = &$_SESSION[CHAVE_ESTADO_SESSAO];
     $strTipoCargaEmAndamento = $arrEstado['tipoCarga'];
@@ -163,6 +168,9 @@ try {
   PaginaSEI::getInstance()->processarExcecao($e);
 }
 
+// ETAPA 3 de 3 - renderiza a tela: formulario de upload (se nao ha carga em andamento),
+// mensagem de progresso (se ainda processando) e/ou o relatorio linha a linha (se ja existe
+// algum resultado, mesmo que parcial).
 PaginaSEI::getInstance()->montarDocType();
 PaginaSEI::getInstance()->abrirHtml();
 PaginaSEI::getInstance()->abrirHead();

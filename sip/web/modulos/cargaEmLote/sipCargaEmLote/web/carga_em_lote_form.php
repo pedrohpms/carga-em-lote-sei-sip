@@ -43,6 +43,8 @@ $arrResumoPorOperacao = null;
 $strTipoCarga = PaginaSip::POST('selTipoCarga');
 
 try {
+  // ETAPA 1 de 3 - novo envio do formulario: descarta qualquer carga anterior em andamento
+  // (nunca mistura arquivos) e inicia o estado desta nova carga na sessao.
   if (isset($_POST['sbmProcessar'])) {
     if (isset($_SESSION[CHAVE_ESTADO_SESSAO]['arquivo']) && file_exists($_SESSION[CHAVE_ESTADO_SESSAO]['arquivo'])) {
       unlink($_SESSION[CHAVE_ESTADO_SESSAO]['arquivo']);
@@ -84,6 +86,9 @@ try {
     );
   }
 
+  // ETAPA 2 de 3 - roda a cada requisicao (POST inicial OU GET de recarregamento
+  // automatico): processa UM lote (CargaEmLoteRN::TAMANHO_LOTE linhas) e acumula o resultado
+  // na sessao. So para de rodar quando offset >= total (carga concluida).
   if (isset($_SESSION[CHAVE_ESTADO_SESSAO])) {
     $arrEstado = &$_SESSION[CHAVE_ESTADO_SESSAO];
     $strTipoCargaEmAndamento = $arrEstado['tipoCarga'];
@@ -143,6 +148,9 @@ try {
   PaginaSip::getInstance()->processarExcecao($e);
 }
 
+// ETAPA 3 de 3 - renderiza a tela: formulario de upload (se nao ha carga em andamento),
+// mensagem de progresso (se ainda processando) e/ou o relatorio linha a linha (se ja existe
+// algum resultado, mesmo que parcial).
 PaginaSip::getInstance()->montarDocType();
 PaginaSip::getInstance()->abrirHtml();
 PaginaSip::getInstance()->abrirHead();

@@ -13,11 +13,12 @@
  * "erro". Registros ja existentes sao pulados (nunca sobrescritos), verificados com o mesmo
  * padrao de pre-checagem (contar/consultar) que as proprias *RN ja usam internamente.
  *
- * ATENCAO (verificar em ambiente real antes de usar em carga de producao): como o controle de
- * conexao/transacao do InfraRN e compartilhado por classe estatica, chamar UnidadeRN/UsuarioRN/
- * etc. de dentro de um metodo *Controlado desta classe reaproveita a mesma transacao aberta
- * aqui. Isso nunca foi testado contra o container rodando de verdade - so contra a leitura do
- * codigo-fonte.
+ * Nota tecnica: como o controle de conexao/transacao do InfraRN e compartilhado por classe
+ * estatica, chamar UnidadeRN/UsuarioRN/etc. de dentro de um metodo *Controlado desta classe
+ * reaproveita a mesma transacao aberta aqui - cada linha do csv vira uma transacao nativa
+ * completa (abertura+commit), igual ao que a tela nativa faria uma linha de cada vez.
+ * Validado contra o container real em varias rodadas (incluindo cargas de 200 linhas em
+ * lotes de 50), sem sinal de conflito de transacao.
  */
 class CargaEmLoteRN extends InfraRN {
 
@@ -42,6 +43,16 @@ class CargaEmLoteRN extends InfraRN {
 
   // ---------------------------------------------------------------------
   // Resolucao de referencias (sigla/nome do .csv -> id interno)
+  //
+  // Guia de leitura: todo dado do csv chega como texto (sigla de orgao, nome de perfil etc.)
+  // e precisa virar o Id interno que as *RN nativas esperam. Cada resolverX() abaixo segue o
+  // mesmo padrao - monta um DTO de filtro e chama listar() - mas dois comportamentos
+  // diferentes em caso de "nao encontrado": resolverOrgao()/resolverSistemaSei()/
+  // resolverPerfil() LANCAM excecao (sao referencias que precisam existir de antemao, nao
+  // criadas por este modulo); resolverUnidade()/resolverUsuario() devolvem null (quem chama
+  // decide se isso e erro ou motivo pra pular a linha - por exemplo, "unidade nao encontrada"
+  // vira erro na carga de hierarquia, mas so retorna null pra virar um novo cadastro na
+  // carga de unidades).
   // ---------------------------------------------------------------------
 
   /**
@@ -111,11 +122,12 @@ class CargaEmLoteRN extends InfraRN {
   // ---------------------------------------------------------------------
 
   /**
-   * Le um .csv (separado por virgula, com cabecalho na primeira linha, que e descartado) e
-   * converte cada campo de UTF-8 (formato recomendado pelo README do macros-sei-sip, gerado
-   * pelo Planilhas Google) para ISO-8859-1 (codificacao nativa do SEI/SIP).
-   *
-   * NAO TESTADO contra um arquivo real de acentuacao - verificar antes de usar em carga real.
+   * Le um .csv/.xlsx/.ods (cabecalho na primeira linha, que e descartado) e converte cada
+   * campo de UTF-8 (formato recomendado pelo README do macros-sei-sip, gerado pelo Planilhas
+   * Google, ou nativo de .xlsx/.ods) para ISO-8859-1 (codificacao nativa do SEI/SIP),
+   * normalizando pra forma composta (NFC) antes de converter - evita problema de comparacao
+   * exata por acentuacao em forma decomposta. Validado com nomes acentuados reais (ex.:
+   * "Leocadio Macambira", "Ursula Trigueirinho") em cargas de centenas de linhas.
    */
   // Despacha pela extensao do arquivo temporario (preservada no upload - ver
   // carga_em_lote_form.php, processarUpload() com bolArquivoTemporarioIdentificado=true) -
@@ -203,10 +215,16 @@ class CargaEmLoteRN extends InfraRN {
   // Colunas do csv (README): 0-Seq,1-orgaoUnidade,2-siglaUnidade,3-descricaoUnidade,...
   // ---------------------------------------------------------------------
 
-  // Recebe as linhas ja lidas (e, quando chamado em lote, ja fatiadas) - quem le o
-  // arquivo e fatia por offset/limite e o metodo combinado que chama este (mesmo arquivo e
-  // relido uma vez por lote, mas isso e barato - o que demora e a gravacao no banco, nao a
-  // leitura do csv/xlsx/ods).
+  /**
+   * Cadastra unidades (operacao de CRIACAO): uma linha por unidade, pula (STA_PULADO) se a
+   * sigla ja existir no orgao, cadastra (STA_OK) caso contrario. Nao mexe em hierarquia -
+   * isso e responsabilidade de processarHierarquiaControlado() logo abaixo.
+   *
+   * Recebe as linhas ja lidas (e, quando chamado em lote, ja fatiadas) - quem le o
+   * arquivo e fatia por offset/limite e o metodo combinado que chama este (mesmo arquivo e
+   * relido uma vez por lote, mas isso e barato - o que demora e a gravacao no banco, nao a
+   * leitura do csv/xlsx/ods).
+   */
   protected function processarUnidadesControlado(array $arrLinhas): array {
     $arrResultado = array();
     foreach ($arrLinhas as $arrLinha) {
@@ -293,6 +311,13 @@ class CargaEmLoteRN extends InfraRN {
   // as linhas, so processa na ordem em que aparecem no arquivo.
   // ---------------------------------------------------------------------
 
+  /**
+   * Posiciona unidades ja existentes na hierarquia "SEI" do SIP (operacao de CRIACAO do
+   * vinculo, nao da unidade em si - ver processarUnidadesControlado() acima). Pula
+   * (STA_PULADO) se o vinculo ja existir, cadastra (STA_OK) caso contrario. Da erro se a
+   * unidade informada na coluna "superior" ainda nao estiver na hierarquia - por isso o csv
+   * precisa vir ordenado de cima para baixo (raizes primeiro).
+   */
   protected function processarHierarquiaControlado(array $arrLinhas): array {
     $arrResultado = array();
     $objSistemaSeiDTO = $this->resolverSistemaSei();
@@ -364,6 +389,12 @@ class CargaEmLoteRN extends InfraRN {
   // Cadastra so o usuario (sem a permissao - ver processarPermissoesControlado).
   // ---------------------------------------------------------------------
 
+  /**
+   * Cadastra usuarios (operacao de CRIACAO): uma linha por usuario, pula (STA_PULADO) se a
+   * sigla ja existir no orgao, cadastra (STA_OK) caso contrario. So cadastra o usuario -
+   * a primeira permissao (necessaria pra ele conseguir acessar o SEI) e concedida
+   * separadamente por processarPermissoesControlado() logo abaixo.
+   */
   protected function processarUsuariosControlado(array $arrLinhas): array {
     $arrResultado = array();
     foreach ($arrLinhas as $arrLinha) {
@@ -460,6 +491,13 @@ class CargaEmLoteRN extends InfraRN {
 
   const ID_TIPO_PERMISSAO_PADRAO = 1;
 
+  /**
+   * Concede a um usuario ja existente um perfil numa unidade (operacao de CRIACAO da
+   * permissao, nao do usuario - ver processarUsuariosControlado() acima). Pula
+   * (STA_PULADO) se o usuario ja possuir aquele perfil naquela unidade, cadastra (STA_OK)
+   * caso contrario. Tipo de permissao sempre "Nao Delegavel" (ver constante
+   * ID_TIPO_PERMISSAO_PADRAO) - o campo existe no SIP mas nao tem uso relevante para o SEI.
+   */
   protected function processarPermissoesControlado(array $arrLinhas): array {
     $arrResultado = array();
     $objSistemaSeiDTO = $this->resolverSistemaSei();

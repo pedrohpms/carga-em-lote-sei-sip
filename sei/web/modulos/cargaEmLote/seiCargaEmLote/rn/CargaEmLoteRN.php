@@ -2,22 +2,32 @@
 /**
  * CargaEmLoteRN (SEI)
  *
- * Orquestra a leitura do mesmo .csv de unidades usado pelo modulo SIP (Sprint 1) e chama
- * diretamente as classes de regra de negocio ja existentes no SEI (UnidadeRN, ContatoRN,
- * EmailUnidadeRN, OrgaoRN, UfRN, CidadeRN) para completar o cadastro de unidades com dados
- * complementares: endereco, telefone, site, CNPJ e lista de e-mails.
+ * Orquestra a leitura de arquivos .csv/.xlsx/.ods e chama diretamente as classes de regra de
+ * negocio ja existentes no SEI para as 4 operacoes deste modulo - cada uma tem sua propria
+ * secao mais abaixo, identificada pelo nome do metodo publico (processarX):
  *
- * Diferente do modulo SIP (operacoes de criacao, "pular se ja existe"), esta e uma operacao
- * de ATUALIZACAO de dados que normalmente ja existem (a unidade e o Contato vinculado sao
- * criados nativamente/via replicacao SIP->SEI quando a unidade e cadastrada). Decisao
- * confirmada com o usuario: csv e fonte de verdade, sempre atualiza e reporta OK, nunca
- * "pulado".
+ * - processarUnidadesComplementar: completa uma unidade ja existente (criada pelo modulo SIP)
+ *   com endereco, telefone, site, CNPJ e lista de e-mails (UnidadeRN, ContatoRN,
+ *   EmailUnidadeRN, OrgaoRN, UfRN, CidadeRN). ATUALIZACAO.
+ * - processarContatoUsuarios: completa um usuario ja existente com dados pessoais/contato -
+ *   endereco, cargo, categoria, CPF, RG, telefones, conjuge etc. (ContatoRN, UsuarioRN,
+ *   CargoRN, CategoriaRN, TituloRN). ATUALIZACAO.
+ * - processarAssuntos: cadastra assuntos na Tabela de Assuntos/CCD-TTD (AssuntoRN,
+ *   TabelaAssuntosRN). CRIACAO.
+ * - processarTiposProcesso: cadastra tipos de processo, com assuntos sugeridos, restricoes de
+ *   orgao/unidade e niveis de acesso (TipoProcedimentoRN e as RN das 3 sub-entidades).
+ *   CRIACAO.
  *
- * ContatoRN::alterarRN0323Controlado() e UnidadeRN::alterarRN0132Controlado() usam um padrao
- * de mesclagem (isSetX() antes de usar getter) que preenche automaticamente com o valor atual
- * do banco qualquer atributo nao setado explicitamente - ao contrario do que se viu no modulo
- * SIP (Sprint 1), aqui NAO e preciso setar todo campo do DTO para evitar "Atributo [X] nao
- * recebeu valor" (confirmado lendo o corpo dos dois metodos antes de escrever este codigo).
+ * "ATUALIZACAO" x "CRIACAO" (ver cada secao para o motivo especifico de cada uma):
+ * - Unidade e Contato de Usuarios sao ATUALIZACAO porque o registro-alvo (unidade/usuario e
+ *   o Contato vinculado a ele) normalmente ja existe, criado nativamente/via replicacao
+ *   SIP->SEI - decisao confirmada com o usuario: csv e sempre fonte de verdade, sempre
+ *   atualiza e reporta OK, nunca "pulado". Campo vazio no csv PRESERVA o valor ja existente
+ *   (nao apaga) - `ContatoRN::alterarRN0323Controlado()`/`UnidadeRN::alterarRN0132Controlado()`
+ *   usam um padrao de mesclagem (isSetX() antes do getter) que preenche automaticamente do
+ *   banco qualquer atributo nao setado explicitamente.
+ * - Assuntos e Tipos de Processo sao CRIACAO porque nao ha replicacao equivalente de outro
+ *   sistema - cada linha do csv e um registro novo (ou ja existente, a pular).
  */
 class CargaEmLoteRN extends InfraRN {
 
@@ -29,9 +39,11 @@ class CargaEmLoteRN extends InfraRN {
   // de uma unica requisicao longa) - existe porque o timeout que interrompe uma carga grande
   // NAO e o do PHP (max_execution_time=0 neste laboratorio) e sim o do servidor web/proxy na
   // frente dele, que o modulo nao controla (e so codigo acrescentado a uma instalacao SEI/SIP
-  // ja existente - cf. instrucoes.txt). Calibrado empiricamente no modulo SIP (mesma ordem de
-  // grandeza de custo por linha): ~2,1s por linha - 50 linhas ficam em ~105s, com folga
-  // confortavel sob o teto de 300s configurado no laboratorio. Ajuste pra baixo se a
+  // ja existente - cf. instrucoes.txt). Calibrado empiricamente pela operacao mais pesada
+  // testada (Unidades/Usuarios, no modulo SIP): ~2,1s por linha - 50 linhas ficam em ~105s,
+  // com folga confortavel sob o teto de 300s configurado no laboratorio. E um valor
+  // conservador tambem para as operacoes deste arquivo - Tipos de Processo, por exemplo, se
+  // mostrou bem mais leve na pratica (100 linhas em ~4s, ~0,04s/linha). Ajuste pra baixo se a
   // instalacao real tiver um timeout mais agressivo na frente do PHP (proxy reverso,
   // balanceador, etc. - o modulo nao tem como detectar isso sozinho).
   const TAMANHO_LOTE = 50;
@@ -42,6 +54,15 @@ class CargaEmLoteRN extends InfraRN {
 
   // ---------------------------------------------------------------------
   // Resolucao de referencias (sigla/nome do .csv -> id interno)
+  //
+  // Guia de leitura: todo dado do csv chega como texto (sigla de orgao, nome de cargo etc.) e
+  // precisa virar o Id interno que as *RN nativas esperam. resolverOrgao()/resolverPais()
+  // LANCAM excecao se nao encontrado (sao referencias que precisam existir de antemao);
+  // resolverUnidade() devolve null (quem chama decide se e erro); resolverUf()/
+  // resolverCidade() devolvem null (paises/UFs sem essa cidade cadastrada sao um caso valido,
+  // nao um erro); resolverCargo()/resolverCategoria()/resolverTitulo() sao dominios
+  // administrativos (cadastrados manualmente em Administracao > Contatos > X) - se o valor do
+  // csv nao existir, a linha da erro em vez de criar o dominio na hora.
   // ---------------------------------------------------------------------
 
   private function resolverOrgao(string $strSigla): OrgaoDTO {
@@ -248,6 +269,13 @@ class CargaEmLoteRN extends InfraRN {
   // 14-telefoneUnidade,15-siteUnidade
   // ---------------------------------------------------------------------
 
+  /**
+   * Completa uma unidade JA EXISTENTE com endereco, telefone, site, CNPJ e lista de e-mails
+   * (operacao de ATUALIZACAO - ver docblock da classe para o porque). Se a unidade nao tiver
+   * IdContato (nao deveria acontecer no fluxo normal, ja que a replicacao SIP->SEI cria o
+   * Contato junto com a unidade), reporta erro na linha em vez de criar um do zero. Mescla a
+   * lista de e-mails com a existente (nunca substitui a lista inteira, so acrescenta).
+   */
   protected function processarUnidadesComplementarControlado(array $arrParametros): array {
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
@@ -411,6 +439,13 @@ class CargaEmLoteRN extends InfraRN {
   // usuario, ja que sigla de usuario e unica por orgao, nao globalmente).
   // ---------------------------------------------------------------------
 
+  /**
+   * Completa um usuario JA EXISTENTE com dados pessoais/contato - endereco, cargo, categoria,
+   * funcao, titulo, CPF, RG, data de nascimento, matricula, telefones, conjuge, e-mail e
+   * observacoes (operacao de ATUALIZACAO - ver docblock da classe). Diferente da carga de
+   * Unidade acima, aqui o e-mail e um campo unico (nao uma lista), entao nao ha logica de
+   * mesclagem de array - so o padrao geral de "campo vazio no csv preserva o valor atual".
+   */
   protected function processarContatoUsuariosControlado(array $arrParametros): array {
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
@@ -693,6 +728,13 @@ class CargaEmLoteRN extends InfraRN {
   // para o segundo parametro", entao os dois dados desta operacao (arquivo + tabela opcional)
   // precisam vir empacotados num unico array, ao contrario das demais operacoes (um parametro
   // so).
+  /**
+   * Cadastra assuntos na Tabela de Assuntos (CCD/TTD) - operacao de CRIACAO (pula/STA_PULADO
+   * se o codigo estruturado ja existir NA MESMA TABELA, cadastra/STA_OK caso contrario). Usa
+   * a tabela marcada como atual por padrao; o parametro opcional 'nomeTabela' (dentro do
+   * mesmo array $arrParametros, ver nota do __call logo acima) permite escolher outra - util
+   * pra quem esta preparando uma tabela nova, ainda nao promovida a atual.
+   */
   protected function processarAssuntosControlado(array $arrParametros): array {
     $strCaminhoArquivo = $arrParametros['csv'];
     $strNomeTabela = $arrParametros['nomeTabela'] ?? null;
@@ -856,6 +898,17 @@ class CargaEmLoteRN extends InfraRN {
     return $arrRet[0];
   }
 
+  /**
+   * Cadastra Tipos de Processo - operacao de CRIACAO (pula/STA_PULADO se o par
+   * Nome+SinOuvidoria ja existir, cadastra/STA_OK caso contrario). A mais complexa das 4
+   * operacoes deste modulo: alem dos campos escalares do tipo, grava ate 3 listas de
+   * sub-entidades por linha (assuntos sugeridos, restricoes de orgao/unidade, niveis de
+   * acesso permitidos) - ver os helpers privados logo acima (parseListaPontoVirgula,
+   * resolverStaNivelAcesso, resolverSinalizadorSimNao, resolverAssuntoPorCodigo,
+   * resolverHipoteseLegal) para o parsing de cada coluna correspondente. Assuntos sugeridos
+   * precisam existir na Tabela de Assuntos atual - rode a carga de Assuntos antes, se for o
+   * caso.
+   */
   protected function processarTiposProcessoControlado(array $arrParametros): array {
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
