@@ -1,0 +1,92 @@
+Instrucoes para instalacao do modulo Carga em Lote (SEI)
+
+1 - os arquivos deste modulo ja estao no lugar certo:
+    sei/web/modulos/cargaEmLote/seiCargaEmLote/
+
+2 - ativar o modulo na chave Modulos do arquivo sei/config/ConfiguracaoSEI.php:
+
+         'SEI' => array(
+
+             /* ... outras chaves ... */
+
+            'Modulos' => array(
+                 'SeiCargaEmLoteIntegracao' => 'cargaEmLote/seiCargaEmLote'
+                 )
+         ),
+
+3 - reiniciar o container httpd (ou rodar make restart, no laboratorio) para a mudanca em
+    ConfiguracaoSEI.php valer.
+
+4 - conferir se o modulo carregou sem erro pelo menu Infra/Modulos do SEI.
+
+5 - o icone do modulo (carga.svg) ja vem dentro da propria pasta do modulo
+    (web/modulos/cargaEmLote/seiCargaEmLote/menu/carga.svg) - diferente do modulo SIP, o SEI
+    permite que cada modulo declare seu proprio diretorio de icones
+    (SeiCargaEmLoteIntegracao::obterDiretorioIconesMenu()), entao nao e preciso copiar nada
+    para fora da pasta do modulo.
+
+6 - rodar o script de instalacao, que cria (se ainda nao existirem) o recurso
+    md_carga_em_lote_sei, o perfil "Carga em Lote (SEI)" e o item de menu, e ja atribui o
+    recurso e o item de menu ao perfil. Recurso/perfil/menu de telas do SEI sao geridos nas
+    mesmas tabelas do SIP (por isso o script se conecta ao banco do SIP, nao ao do SEI) -
+    mesmo mecanismo (InfraScriptVersao + ScriptSip) usado pelo modulo SIP e pelo proprio
+    script oficial do TRF4 (sip/scripts/atualizar_recursos_sei.php). Idempotente, seguro
+    reexecutar. Precisa ser rodado via linha de comando dentro do container (pede
+    usuario/senha do banco SIP interativamente):
+
+    docker exec -it httpd php /opt/sei/web/modulos/cargaEmLote/seiCargaEmLote/scripts/instalar.php
+
+7 - atribuir o perfil "Carga em Lote (SEI)" (criado pelo passo 6) a quem for operar as cargas
+    (SIP > Perfis > Montar, escolhendo o Sistema "SEI") - unico passo que continua manual,
+    pois depende de decisao de quem tera acesso em cada instalacao.
+
+    Importante: quem receber o perfil precisa fazer logout/login de novo (ou aguardar a
+    sessao expirar) para o item de menu aparecer - o menu de cada sistema e montado uma
+    unica vez no login e fica guardado na sessao, sem recarregar sozinho quando uma nova
+    permissao e concedida no meio de uma sessao ja aberta (comportamento generico do
+    framework, nao peculiaridade deste modulo).
+
+Pre-requisito das operacoes de Unidade/Usuario: a unidade/usuario ja precisa existir no SEI
+(com um Contato vinculado) antes de rodar a carga - normalmente ja e o caso, ja que criar
+pelo modulo SIP (Sprint 1) ja cria o Contato correspondente via replicacao SIP->SEI.
+
+Formatos de arquivo aceitos no upload: .csv, .xlsx e .ods (a tela detecta pela extensao do
+arquivo enviado e usa o leitor certo - PHPExcel, ja vendorizado no proprio framework em
+infra/infra_php/PHPExcel, faz a leitura de .xlsx/.ods). Arquivos de referencia com o mesmo
+conteudo nos 3 formatos ficam em exemplos/, dentro da pasta deste modulo:
+    sei/web/modulos/cargaEmLote/seiCargaEmLote/exemplos/
+        exemploUnidades.{csv,xlsx,ods}            (Dados Complementares de Unidade)
+        exemploContatoUsuarios.{csv,xlsx,ods}      (Contato de Usuarios)
+        exemploAssuntos.{csv,xlsx,ods}             (Assuntos)
+        exemploTiposDeProcesso.{csv,xlsx,ods}      (Tipos de Processo)
+
+Processamento em lotes (arquivos grandes): a tela processa CargaEmLoteRN::TAMANHO_LOTE linhas
+por vez (50 por padrao) e se recarrega sozinha automaticamente ate concluir, mostrando o
+progresso ("X de Y linhas processadas") a cada recarregamento. Existe porque o timeout que
+interrompe uma carga grande normalmente NAO e do PHP (o modulo nao controla isso - so
+acrescenta arquivos a uma instalacao SEI ja existente) e sim do servidor web/proxy na frente
+dele, fora do alcance do modulo. Se a instalacao real tiver um timeout mais agressivo (comum
+atras de proxy reverso/balanceador corporativo) e uma carga ainda assim estourar, reduza a
+constante TAMANHO_LOTE no topo de rn/CargaEmLoteRN.php (calibrado neste laboratorio: ~2,1s por
+linha processada, 50 linhas ficam em ~105s - ajuste a conta pro teto real da instalacao, com
+margem de seguranca). O estado do processamento (arquivo, quantas linhas ja foram feitas,
+relatorio acumulado) fica na sessao do navegador do usuario, nao em banco - some sozinho se o
+usuario fechar a aba ou a sessao expirar no meio, sem deixar rastro (so o arquivo temporario,
+apagado ao concluir ou ao iniciar uma nova carga).
+
+Operacoes cobertas por este modulo (as 4 do lado SEI do repositorio pengovbr/macros-sei-sip):
+- Dados Complementares de Unidade (macro 3.dadosUnidadesSEI) - operacao de ATUALIZACAO: o csv
+  e sempre tratado como fonte de verdade, os campos sao sempre sobrescritos e reportados como
+  "OK (atualizado)" - nao existe estado "pulado" nesta operacao. Usa o mesmo arquivo .csv de
+  unidades do modulo SIP (exemploUnidades, 16 colunas), consumindo as colunas que o modulo SIP
+  nao usa (5, 6-15).
+- Contato de Usuarios (macro 6.cargaContatoUsuarios) - tambem operacao de ATUALIZACAO, mesmo
+  raciocinio da anterior. Sem coluna de orgao no csv (sigla de usuario e resolvida em todos os
+  orgaos; erro se ambigua).
+- Assuntos (macro 7.cargaAssuntos) - operacao de CRIACAO (pula e reporta se o codigo ja existe
+  na Tabela de Assuntos escolhida). Cadastra sempre na tabela marcada como atual, a menos que
+  o operador escolha outra pelo campo "Tabela de Assuntos" da tela (so aparece quando o tipo
+  de carga selecionado e "Assuntos").
+- Tipos de Processo (macro 8.cargaTiposDeProcesso) - tambem operacao de CRIACAO (duplicidade
+  verificada pelo par Nome+SinOuvidoria). Assuntos sugeridos no csv precisam existir na
+  Tabela de Assuntos atual (cadastre antes pela carga de Assuntos).

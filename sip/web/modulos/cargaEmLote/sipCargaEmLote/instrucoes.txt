@@ -1,0 +1,76 @@
+Instrucoes para instalacao do modulo Carga em Lote (SIP)
+
+1 - os arquivos deste modulo ja estao no lugar certo:
+    sip/web/modulos/cargaEmLote/sipCargaEmLote/
+
+2 - ativar o modulo na chave Modulos do arquivo sip/config/ConfiguracaoSip.php:
+
+         'Sip' => array(
+
+             /* ... outras chaves ... */
+
+            'Modulos' => array(
+                 'SipCargaEmLoteIntegracao' => 'cargaEmLote/sipCargaEmLote'
+                 )
+         ),
+
+3 - reiniciar o container httpd (ou rodar make restart, no laboratorio) para a mudanca em
+    ConfiguracaoSip.php valer.
+
+4 - conferir se o modulo carregou sem erro pelo menu Infra/Modulos do SIP.
+
+5 - copiar o icone do menu para sip/web/menu/carga.svg (unico lugar onde o SIP procura
+    icones de item de menu - nao ha caminho relativo ao modulo para isso, e uma restricao
+    do proprio framework).
+
+6 - rodar o script de instalacao, que cria (se ainda nao existirem) o recurso
+    md_carga_em_lote, o perfil "Carga em Lote" e o item de menu, e ja atribui o recurso e o
+    item de menu ao perfil. Usa o mesmo mecanismo que o proprio TRF4 usa para instalar
+    recursos do SIP (InfraScriptVersao + ScriptSip, o mesmo padrao de
+    sip/scripts/atualizar_recursos_sei.php) - idempotente, seguro reexecutar. Precisa ser
+    rodado via linha de comando dentro do container (pede usuario/senha do banco
+    interativamente):
+
+    docker exec -it httpd php /opt/sip/web/modulos/cargaEmLote/sipCargaEmLote/scripts/instalar.php
+
+7 - atribuir o perfil "Carga em Lote" (criado pelo passo 6) a quem for operar as cargas
+    (SIP > Perfis > Montar, ou direto no cadastro do usuario) - unico passo que continua
+    manual, pois depende de decisao de quem tera acesso em cada instalacao.
+
+    Importante: quem receber o perfil precisa fazer logout/login de novo (ou aguardar a
+    sessao expirar) para o item de menu aparecer - o menu de cada sistema e montado uma
+    unica vez no login e fica guardado na sessao, sem recarregar sozinho quando uma nova
+    permissao e concedida no meio de uma sessao ja aberta (comportamento generico do
+    framework, nao peculiaridade deste modulo).
+
+Formatos de arquivo aceitos no upload: .csv, .xlsx e .ods (a tela detecta pela extensao do
+arquivo enviado e usa o leitor certo - PHPExcel, ja vendorizado no proprio framework em
+infra/infra_php/PHPExcel, faz a leitura de .xlsx/.ods). Arquivos de referencia com o mesmo
+conteudo nos 3 formatos ficam em exemplos/, dentro da pasta deste modulo:
+    sip/web/modulos/cargaEmLote/sipCargaEmLote/exemplos/
+        exemploUnidades.{csv,xlsx,ods}   (Unidades e Hierarquia)
+        exemploUsuarios.{csv,xlsx,ods}   (Usuarios e Primeiras Permissoes)
+
+Processamento em lotes (arquivos grandes): a tela processa CargaEmLoteRN::TAMANHO_LOTE linhas
+por vez (50 por padrao) e se recarrega sozinha automaticamente ate concluir, mostrando o
+progresso ("X de Y linhas processadas") a cada recarregamento. Existe porque o timeout que
+interrompe uma carga grande normalmente NAO e do PHP (o modulo nao controla isso - so
+acrescenta arquivos a uma instalacao SIP ja existente) e sim do servidor web/proxy na frente
+dele, fora do alcance do modulo. Se a instalacao real tiver um timeout mais agressivo (comum
+atras de proxy reverso/balanceador corporativo) e uma carga ainda assim estourar, reduza a
+constante TAMANHO_LOTE no topo de rn/CargaEmLoteRN.php (calibrado neste laboratorio: ~2,1s por
+linha processada - cadastro de usuario + primeira permissao juntos -, 50 linhas ficam em
+~105s - ajuste a conta pro teto real da instalacao, com margem de seguranca). O estado do
+processamento (arquivo, quantas linhas ja foram feitas, relatorio acumulado) fica na sessao do
+navegador do usuario, nao em banco - some sozinho se o usuario fechar a aba ou a sessao expirar
+no meio, sem deixar rastro (so o arquivo temporario, apagado ao concluir ou ao iniciar uma
+nova carga).
+
+Limitacoes conhecidas (ver plano original para detalhes):
+- so cobre as 4 operacoes do repositorio pengovbr/macros-sei-sip que rodam no SIP: cadastro
+  de unidades, hierarquia, usuarios e primeiras permissoes (unificadas em 2 tipos de carga:
+  Unidades e Hierarquia, Usuarios e Primeiras Permissoes). As operacoes que rodam no SEI
+  (dados complementares de unidade, contatos, assuntos, tipos de processo) ficam no modulo
+  SEI separado (sei/web/modulos/cargaEmLote/seiCargaEmLote/).
+- a carga de hierarquia precisa do .csv ja ordenado de cima para baixo (unidades "raiz"
+  primeiro) - mesma limitacao das macros originais, nao ha reordenacao automatica.
