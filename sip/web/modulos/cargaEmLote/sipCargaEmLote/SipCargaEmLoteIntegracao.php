@@ -1,11 +1,11 @@
 <?
 /**
  * Modulo SIP - CARGA EM LOTE
- * Desenvolvido pelo Processo Eletrônico Nacional, produzido com o auxílio do Claude Code.
+ * Desenvolvido pelo Processo EletrÃ´nico Nacional, produzido com o auxÃ­lio do Claude Code.
  *
- * Tem como objetivo automatizar processos administrativos repetitivos no SEI/SIP com segurança 
- * e eficiência, reduzindo o esforço manual de operadores e padronizando o carregamento de dados 
- * a partir de arquivos .csv de referência.
+ * Tem como objetivo automatizar processos administrativos repetitivos no SEI/SIP com seguranÃ§a 
+ * e eficiÃªncia, reduzindo o esforÃ§o manual de operadores e padronizando o carregamento de dados 
+ * a partir de arquivos .csv de referÃªncia.
  * 
  * Cobre as seguintes operacoes que rodam no SIP:
  * cadastro de unidades, hierarquia, usuarios e primeiras permissoes.
@@ -24,7 +24,7 @@ class SipCargaEmLoteIntegracao extends SipIntegracao {
   }
 
   public function getInstituicao() {
-    return 'Processo Eletrônico Nacional - PEN';
+    return 'Processo EletrÃ´nico Nacional - PEN';
   }
 
   public function inicializar() {

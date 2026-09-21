@@ -27,7 +27,7 @@ SessaoSEI::getInstance()->validarPermissao($_GET['acao']);
 $strTitulo = 'Carga em Lote (SEI)';
 $arrTiposCarga = array(
   'unidades_complementar' => 'Dados Complementares de Unidade',
-  'contato_usuarios' => 'Contato de Usu·rios',
+  'contato_usuarios' => 'Contato de Usu√°rios',
   'assuntos' => 'Assuntos',
   'tipos_processo' => 'Tipos de Processo',
 );
@@ -141,7 +141,7 @@ try {
           $arrRetornoLote = $objCargaEmLoteRN->processarTiposProcesso($arrParametrosChamada);
           break;
         default:
-          throw new InfraException('Tipo de carga desconhecido em andamento na sess„o.');
+          throw new InfraException('Tipo de carga desconhecido em andamento na sess√£o.');
       }
 
       $arrEstado['resultado'] = array_merge($arrEstado['resultado'], $arrRetornoLote['resultado']);
@@ -282,9 +282,9 @@ PaginaSEI::getInstance()->abrirBody($strTitulo);
     <label id="lblArquivo" for="filArquivo" class="infraLabelObrigatorio">Arquivo (.csv, .xlsx ou .ods):</label>
     <input type="file" id="filArquivo" name="filArquivo" accept=".csv,.xlsx,.ods"/>
     <p style="color:#666;font-style:italic;">Isto pode demorar um pouco, dependendo da
-    quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento È
-    feito em lotes de <?=CargaEmLoteRN::TAMANHO_LOTE?> - esta tela se atualizar·
-    periodicamente com o progresso, sozinha, atÈ concluir. N„o feche nem atualize a
+    quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento √©
+    feito em lotes de <?=CargaEmLoteRN::TAMANHO_LOTE?> - esta tela se atualizar√°
+    periodicamente com o progresso, sozinha, at√© concluir. N√£o feche nem atualize a
     janela manualmente enquanto isso.</p>
     </div>
 
@@ -301,8 +301,8 @@ PaginaSEI::getInstance()->abrirBody($strTitulo);
     PaginaSEI::getInstance()->abrirAreaDados('10em');
     ?>
     <p><b>Processando <?=PaginaSEI::tratarHTML($arrTiposCarga[$strTipoCargaEmAndamento] ?? $strTipoCargaEmAndamento)?>...</b>
-    <?=$numLinhasProcessadas?> de <?=$numTotalLinhas?> linha(s) do arquivo j· passaram pelo
-    sistema. Esta tela vai se atualizar sozinha em instantes - n„o feche nem atualize a
+    <?=$numLinhasProcessadas?> de <?=$numTotalLinhas?> linha(s) do arquivo j√° passaram pelo
+    sistema. Esta tela vai se atualizar sozinha em instantes - n√£o feche nem atualize a
     janela manualmente.</p>
     <?
     PaginaSEI::getInstance()->fecharAreaDados();
@@ -316,8 +316,8 @@ PaginaSEI::getInstance()->abrirBody($strTitulo);
     $numErro = count(array_filter($arrResultado, function ($r) { return $r['status'] === CargaEmLoteRN::STA_ERRO; }));
     ?>
     <div id="divResultadoCargaEmLote">
-    <p><b><?=$bolProcessamentoConcluido ? 'Resultado:' : 'Resultado parcial (atÈ agora):'?></b>
-    <?=$numOk?> atualizado(s)/cadastrado(s), <?=$numPulado?> pulado(s) (j· existiam), <?=$numErro?> com erro.</p>
+    <p><b><?=$bolProcessamentoConcluido ? 'Resultado:' : 'Resultado parcial (at√© agora):'?></b>
+    <?=$numOk?> atualizado(s)/cadastrado(s), <?=$numPulado?> pulado(s) (j√° existiam), <?=$numErro?> com erro.</p>
     <table class="infraTable" width="100%">
       <thead>
         <tr><th>Linha</th><th>Status</th><th>Mensagem</th></tr>

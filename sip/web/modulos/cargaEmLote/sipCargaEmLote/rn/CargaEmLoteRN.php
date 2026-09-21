@@ -67,7 +67,7 @@ class CargaEmLoteRN extends InfraRN {
     $objSistemaRN = new SistemaRN();
     $arrRet = $objSistemaRN->listar($dto);
     if (count($arrRet) === 0) {
-      throw new InfraException('Sistema "SEI" n„o encontrado no cadastro de Sistemas do SIP.');
+      throw new InfraException('Sistema "SEI" n√£o encontrado no cadastro de Sistemas do SIP.');
     }
     return $arrRet[0];
   }
@@ -79,7 +79,7 @@ class CargaEmLoteRN extends InfraRN {
     $objOrgaoRN = new OrgaoRN();
     $arrRet = $objOrgaoRN->listar($dto);
     if (count($arrRet) === 0) {
-      throw new InfraException('”rg„o "' . $strSigla . '" n„o encontrado.');
+      throw new InfraException('√ìrg√£o "' . $strSigla . '" n√£o encontrado.');
     }
     return $arrRet[0];
   }
@@ -112,7 +112,7 @@ class CargaEmLoteRN extends InfraRN {
     $objPerfilRN = new PerfilRN();
     $arrRet = $objPerfilRN->listar($dto);
     if (count($arrRet) === 0) {
-      throw new InfraException('Perfil "' . $strNome . '" n„o encontrado para o sistema informado.');
+      throw new InfraException('Perfil "' . $strNome . '" n√£o encontrado para o sistema informado.');
     }
     return $arrRet[0];
   }
@@ -144,7 +144,7 @@ class CargaEmLoteRN extends InfraRN {
       case '':
         return $this->lerCsvPuro($strCaminhoArquivo);
       default:
-        throw new InfraException('Formato de arquivo ".' . $strExtensao . '" n„o suportado (use .csv, .xlsx ou .ods).');
+        throw new InfraException('Formato de arquivo ".' . $strExtensao . '" n√£o suportado (use .csv, .xlsx ou .ods).');
     }
   }
 
@@ -152,7 +152,7 @@ class CargaEmLoteRN extends InfraRN {
     $arrLinhas = array();
     $resArquivo = fopen($strCaminhoArquivo, 'r');
     if ($resArquivo === false) {
-      throw new InfraException('N„o foi possÌvel abrir o arquivo "' . $strCaminhoArquivo . '".');
+      throw new InfraException('N√£o foi poss√≠vel abrir o arquivo "' . $strCaminhoArquivo . '".');
     }
     // Cabecalho e a "linha 0" (nao entra no relatorio); a primeira linha de dado e a linha 1.
     $numLinha = -1;
@@ -236,13 +236,13 @@ class CargaEmLoteRN extends InfraRN {
         $strDescricao = $c[3] ?? '';
 
         if ($strSiglaOrgao === '' || $strSigla === '' || $strDescricao === '') {
-          throw new InfraException('Linha incompleta (Ûrg„o/sigla/descriÁ„o obrigatÛrios).');
+          throw new InfraException('Linha incompleta (√≥rg√£o/sigla/descri√ß√£o obrigat√≥rios).');
         }
 
         $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
 
         if ($this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSigla) !== null) {
-          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Unidade "' . $strSigla . '" j· existe.');
+          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Unidade "' . $strSigla . '" j√° existe.');
           continue;
         }
 
@@ -298,7 +298,7 @@ class CargaEmLoteRN extends InfraRN {
       'processadas' => count($arrLote),
       'resumoPorOperacao' => array(
         array('rotulo' => 'unidade(s)', 'tally' => $this->tally($arrResultadoUnidades)),
-        array('rotulo' => 'posiÁ„o(ıes) na hierarquia', 'tally' => $this->tally($arrResultadoHierarquia)),
+        array('rotulo' => 'posi√ß√£o(√µes) na hierarquia', 'tally' => $this->tally($arrResultadoHierarquia)),
       ),
     );
   }
@@ -332,20 +332,20 @@ class CargaEmLoteRN extends InfraRN {
         $strSuperior = $c[4] ?? '';
 
         if ($strSiglaOrgao === '' || $strSigla === '') {
-          throw new InfraException('Linha incompleta (Ûrg„o/sigla obrigatÛrios).');
+          throw new InfraException('Linha incompleta (√≥rg√£o/sigla obrigat√≥rios).');
         }
 
         $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
         $objUnidadeDTO = $this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSigla);
         if ($objUnidadeDTO === null) {
-          throw new InfraException('Unidade "' . $strSigla . '" n„o encontrada (rode a carga de unidades antes).');
+          throw new InfraException('Unidade "' . $strSigla . '" n√£o encontrada (rode a carga de unidades antes).');
         }
 
         $numIdUnidadePai = null;
         if ($strSuperior !== '') {
           $objUnidadePaiDTO = $this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSuperior);
           if ($objUnidadePaiDTO === null) {
-            throw new InfraException('Unidade superior "' . $strSuperior . '" ainda n„o est· na hierarquia (processe as linhas de cima para baixo).');
+            throw new InfraException('Unidade superior "' . $strSuperior . '" ainda n√£o est√° na hierarquia (processe as linhas de cima para baixo).');
           }
           $numIdUnidadePai = $objUnidadePaiDTO->getNumIdUnidade();
         }
@@ -357,7 +357,7 @@ class CargaEmLoteRN extends InfraRN {
         $dtoConsulta->retTodos();
         $objRelRN = new RelHierarquiaUnidadeRN();
         if ($objRelRN->consultar($dtoConsulta) !== null) {
-          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Unidade "' . $strSigla . '" j· consta na hierarquia.');
+          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Unidade "' . $strSigla . '" j√° consta na hierarquia.');
           continue;
         }
 
@@ -409,13 +409,13 @@ class CargaEmLoteRN extends InfraRN {
         $strEmail = $c[6] ?? '';
 
         if ($strSiglaOrgao === '' || $strSigla === '' || $strNome === '') {
-          throw new InfraException('Linha incompleta (Ûrg„o/sigla/nome obrigatÛrios).');
+          throw new InfraException('Linha incompleta (√≥rg√£o/sigla/nome obrigat√≥rios).');
         }
 
         $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
 
         if ($this->resolverUsuario($objOrgaoDTO->getNumIdOrgao(), $strSigla) !== null) {
-          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Usu·rio "' . $strSigla . '" j· existe.');
+          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Usu√°rio "' . $strSigla . '" j√° existe.');
           continue;
         }
 
@@ -438,7 +438,7 @@ class CargaEmLoteRN extends InfraRN {
         $objUsuarioRN = new UsuarioRN();
         $objUsuarioRN->cadastrar($objUsuarioDTO);
 
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_OK, 'Usu·rio "' . $strSigla . '" cadastrado.');
+        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_OK, 'Usu√°rio "' . $strSigla . '" cadastrado.');
       } catch (Exception $e) {
         $arrResultado[] = $this->linhaResultado($numLinha, self::STA_ERRO, $this->obterMensagemErro($e));
       }
@@ -473,8 +473,8 @@ class CargaEmLoteRN extends InfraRN {
       'total' => $numTotal,
       'processadas' => count($arrLote),
       'resumoPorOperacao' => array(
-        array('rotulo' => 'usu·rio(s)', 'tally' => $this->tally($arrResultadoUsuarios)),
-        array('rotulo' => 'permiss„o(ıes)', 'tally' => $this->tally($arrResultadoPermissoes)),
+        array('rotulo' => 'usu√°rio(s)', 'tally' => $this->tally($arrResultadoUsuarios)),
+        array('rotulo' => 'permiss√£o(√µes)', 'tally' => $this->tally($arrResultadoPermissoes)),
       ),
     );
   }
@@ -512,19 +512,19 @@ class CargaEmLoteRN extends InfraRN {
         $strNomePerfil = $c[8] ?? '';
 
         if ($strSiglaOrgao === '' || $strSiglaUsuario === '' || $strSiglaUnidade === '' || $strNomePerfil === '') {
-          throw new InfraException('Linha incompleta (Ûrg„o/usu·rio/unidade/perfil obrigatÛrios).');
+          throw new InfraException('Linha incompleta (√≥rg√£o/usu√°rio/unidade/perfil obrigat√≥rios).');
         }
 
         $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
 
         $objUsuarioDTO = $this->resolverUsuario($objOrgaoDTO->getNumIdOrgao(), $strSiglaUsuario);
         if ($objUsuarioDTO === null) {
-          throw new InfraException('Usu·rio "' . $strSiglaUsuario . '" n„o encontrado (rode a carga de usu·rios antes).');
+          throw new InfraException('Usu√°rio "' . $strSiglaUsuario . '" n√£o encontrado (rode a carga de usu√°rios antes).');
         }
 
         $objUnidadeDTO = $this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSiglaUnidade);
         if ($objUnidadeDTO === null) {
-          throw new InfraException('Unidade "' . $strSiglaUnidade . '" n„o encontrada.');
+          throw new InfraException('Unidade "' . $strSiglaUnidade . '" n√£o encontrada.');
         }
 
         $objPerfilDTO = $this->resolverPerfil($objSistemaSeiDTO->getNumIdSistema(), $strNomePerfil);
@@ -537,7 +537,7 @@ class CargaEmLoteRN extends InfraRN {
         $dtoConsulta->retTodos();
         $objPermissaoRN = new PermissaoRN();
         if ($objPermissaoRN->consultar($dtoConsulta) !== null) {
-          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Usu·rio "' . $strSiglaUsuario . '" j· possui o perfil "' . $strNomePerfil . '" na unidade "' . $strSiglaUnidade . '".');
+          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Usu√°rio "' . $strSiglaUsuario . '" j√° possui o perfil "' . $strNomePerfil . '" na unidade "' . $strSiglaUnidade . '".');
           continue;
         }
 

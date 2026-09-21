@@ -51,10 +51,10 @@ class VersaoCargaEmLoteSeiRN extends InfraScriptVersao {
 
       $numIdMenuSei = ScriptSip::obterIdMenu($numIdSistemaSei, 'Principal');
 
-      // Item fica dentro de "Administração" (nao na raiz do menu) - itens que nao sao raiz
-      // nao mostram icone (confirmado empiricamente: só o nível 1 do menu reserva o espaço
-      // do ícone), por isso nenhum ícone é passado abaixo.
-      $numIdItemMenuAdministracao = ScriptSip::obterIdItemMenu($numIdSistemaSei, $numIdMenuSei, 'Administração');
+      // Item fica dentro de "AdministraÃ§Ã£o" (nao na raiz do menu) - itens que nao sao raiz
+      // nao mostram icone (confirmado empiricamente: sÃ³ o nÃ­vel 1 do menu reserva o espaÃ§o
+      // do Ã­cone), por isso nenhum Ã­cone Ã© passado abaixo.
+      $numIdItemMenuAdministracao = ScriptSip::obterIdItemMenu($numIdSistemaSei, $numIdMenuSei, 'AdministraÃ§Ã£o');
 
       $objRecursoDTO = ScriptSip::adicionarRecursoPerfil(
         $numIdSistemaSei,

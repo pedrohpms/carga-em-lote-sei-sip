@@ -73,7 +73,7 @@ class CargaEmLoteRN extends InfraRN {
     $objOrgaoRN = new OrgaoRN();
     $arrRet = $objOrgaoRN->listarRN1353($dto);
     if (count($arrRet) === 0) {
-      throw new InfraException('Órgão "' . $strSigla . '" não encontrado.');
+      throw new InfraException('Ã“rgÃ£o "' . $strSigla . '" nÃ£o encontrado.');
     }
     return $arrRet[0];
   }
@@ -119,7 +119,7 @@ class CargaEmLoteRN extends InfraRN {
     $objPaisRN = new PaisRN();
     $arrRet = $objPaisRN->listar($dto);
     if (count($arrRet) === 0) {
-      throw new InfraException('País "' . $strNome . '" não encontrado.');
+      throw new InfraException('PaÃ­s "' . $strNome . '" nÃ£o encontrado.');
     }
     return $arrRet[0];
   }
@@ -135,7 +135,7 @@ class CargaEmLoteRN extends InfraRN {
     $objCargoRN = new CargoRN();
     $arrRet = $objCargoRN->listarRN0302($dto);
     if (count($arrRet) === 0) {
-      throw new InfraException('Cargo "' . $strExpressao . '" não encontrado para o gênero informado (cadastre antes em Administração > Contatos > Cargos).');
+      throw new InfraException('Cargo "' . $strExpressao . '" nÃ£o encontrado para o gÃªnero informado (cadastre antes em AdministraÃ§Ã£o > Contatos > Cargos).');
     }
     return $arrRet[0];
   }
@@ -148,7 +148,7 @@ class CargaEmLoteRN extends InfraRN {
     $objCategoriaRN = new CategoriaRN();
     $arrRet = $objCategoriaRN->listar($dto);
     if (count($arrRet) === 0) {
-      throw new InfraException('Categoria "' . $strNome . '" não encontrada (cadastre antes em Administração > Contatos > Categorias).');
+      throw new InfraException('Categoria "' . $strNome . '" nÃ£o encontrada (cadastre antes em AdministraÃ§Ã£o > Contatos > Categorias).');
     }
     return $arrRet[0];
   }
@@ -161,7 +161,7 @@ class CargaEmLoteRN extends InfraRN {
     $objTituloRN = new TituloRN();
     $arrRet = $objTituloRN->listar($dto);
     if (count($arrRet) === 0) {
-      throw new InfraException('Título "' . $strExpressao . '" não encontrado (cadastre antes em Administração > Contatos > Títulos).');
+      throw new InfraException('TÃ­tulo "' . $strExpressao . '" nÃ£o encontrado (cadastre antes em AdministraÃ§Ã£o > Contatos > TÃ­tulos).');
     }
     return $arrRet[0];
   }
@@ -185,7 +185,7 @@ class CargaEmLoteRN extends InfraRN {
       case '':
         return $this->lerCsvPuro($strCaminhoArquivo);
       default:
-        throw new InfraException('Formato de arquivo ".' . $strExtensao . '" não suportado (use .csv, .xlsx ou .ods).');
+        throw new InfraException('Formato de arquivo ".' . $strExtensao . '" nÃ£o suportado (use .csv, .xlsx ou .ods).');
     }
   }
 
@@ -193,7 +193,7 @@ class CargaEmLoteRN extends InfraRN {
     $arrLinhas = array();
     $resArquivo = fopen($strCaminhoArquivo, 'r');
     if ($resArquivo === false) {
-      throw new InfraException('Não foi possível abrir o arquivo "' . $strCaminhoArquivo . '".');
+      throw new InfraException('NÃ£o foi possÃ­vel abrir o arquivo "' . $strCaminhoArquivo . '".');
     }
     // Cabecalho e a "linha 0" (nao entra no relatorio); a primeira linha de dado e a linha 1.
     $numLinha = -1;
@@ -299,17 +299,17 @@ class CargaEmLoteRN extends InfraRN {
         $strSite = $c[15] ?? '';
 
         if ($strSiglaOrgao === '' || $strSiglaUnidade === '') {
-          throw new InfraException('Linha incompleta (órgão/sigla obrigatórios).');
+          throw new InfraException('Linha incompleta (Ã³rgÃ£o/sigla obrigatÃ³rios).');
         }
 
         $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
 
         $objUnidadeDTO = $this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSiglaUnidade);
         if ($objUnidadeDTO === null) {
-          throw new InfraException('Unidade "' . $strSiglaUnidade . '" não encontrada no SEI (rode a carga de unidades do módulo SIP antes).');
+          throw new InfraException('Unidade "' . $strSiglaUnidade . '" nÃ£o encontrada no SEI (rode a carga de unidades do mÃ³dulo SIP antes).');
         }
         if (!$objUnidadeDTO->getNumIdContato()) {
-          throw new InfraException('Unidade "' . $strSiglaUnidade . '" não tem contato vinculado (caso não esperado, não tratado nesta versão).');
+          throw new InfraException('Unidade "' . $strSiglaUnidade . '" nÃ£o tem contato vinculado (caso nÃ£o esperado, nÃ£o tratado nesta versÃ£o).');
         }
 
         $numIdPais = PaisINT::buscarIdPaisBrasil();
@@ -318,7 +318,7 @@ class CargaEmLoteRN extends InfraRN {
         if ($strUf !== '') {
           $objUfDTO = $this->resolverUf($strUf, $numIdPais);
           if ($objUfDTO === null) {
-            throw new InfraException('UF "' . $strUf . '" não encontrada.');
+            throw new InfraException('UF "' . $strUf . '" nÃ£o encontrada.');
           }
           $numIdUf = $objUfDTO->getNumIdUf();
         }
@@ -327,7 +327,7 @@ class CargaEmLoteRN extends InfraRN {
         if ($strCidade !== '' && $numIdUf !== null) {
           $objCidadeDTO = $this->resolverCidade($strCidade, $numIdUf);
           if ($objCidadeDTO === null) {
-            throw new InfraException('Cidade "' . $strCidade . '" não encontrada na UF "' . $strUf . '".');
+            throw new InfraException('Cidade "' . $strCidade . '" nÃ£o encontrada na UF "' . $strUf . '".');
           }
           $numIdCidade = $objCidadeDTO->getNumIdCidade();
         }
@@ -484,7 +484,7 @@ class CargaEmLoteRN extends InfraRN {
         $strObs = $c[28] ?? '';
 
         if ($strSigla === '') {
-          throw new InfraException('Linha incompleta (sigla do usuário obrigatória).');
+          throw new InfraException('Linha incompleta (sigla do usuÃ¡rio obrigatÃ³ria).');
         }
 
         $dtoUsuario = new UsuarioDTO();
@@ -497,16 +497,16 @@ class CargaEmLoteRN extends InfraRN {
         $arrUsuarios = $objUsuarioRN->listarRN0490($dtoUsuario);
 
         if (count($arrUsuarios) === 0) {
-          throw new InfraException('Usuário "' . $strSigla . '" não encontrado.');
+          throw new InfraException('UsuÃ¡rio "' . $strSigla . '" nÃ£o encontrado.');
         }
         if (count($arrUsuarios) > 1) {
           $arrSiglasOrgao = array_map(function ($objDTO) { return $objDTO->getStrSiglaOrgao(); }, $arrUsuarios);
-          throw new InfraException('Usuário "' . $strSigla . '" existe em mais de um órgão (' . implode(', ', $arrSiglasOrgao) . ') - csv sem coluna de órgão não suporta este caso.');
+          throw new InfraException('UsuÃ¡rio "' . $strSigla . '" existe em mais de um Ã³rgÃ£o (' . implode(', ', $arrSiglasOrgao) . ') - csv sem coluna de Ã³rgÃ£o nÃ£o suporta este caso.');
         }
         $objUsuarioDTO = $arrUsuarios[0];
 
         if (!$objUsuarioDTO->getNumIdContato()) {
-          throw new InfraException('Usuário "' . $strSigla . '" não tem contato vinculado (caso não esperado, não tratado nesta versão).');
+          throw new InfraException('UsuÃ¡rio "' . $strSigla . '" nÃ£o tem contato vinculado (caso nÃ£o esperado, nÃ£o tratado nesta versÃ£o).');
         }
 
         $numIdPais = PaisINT::buscarIdPaisBrasil();
@@ -518,7 +518,7 @@ class CargaEmLoteRN extends InfraRN {
         if ($strUf !== '') {
           $objUfDTO = $this->resolverUf($strUf, $numIdPais);
           if ($objUfDTO === null) {
-            throw new InfraException('UF "' . $strUf . '" não encontrada.');
+            throw new InfraException('UF "' . $strUf . '" nÃ£o encontrada.');
           }
           $numIdUf = $objUfDTO->getNumIdUf();
         }
@@ -527,7 +527,7 @@ class CargaEmLoteRN extends InfraRN {
         if ($strCidade !== '' && $numIdUf !== null) {
           $objCidadeDTO = $this->resolverCidade($strCidade, $numIdUf);
           if ($objCidadeDTO === null) {
-            throw new InfraException('Cidade "' . $strCidade . '" não encontrada na UF "' . $strUf . '".');
+            throw new InfraException('Cidade "' . $strCidade . '" nÃ£o encontrada na UF "' . $strUf . '".');
           }
           $numIdCidade = $objCidadeDTO->getNumIdCidade();
         }
@@ -650,7 +650,7 @@ class CargaEmLoteRN extends InfraRN {
         $objContatoRN = new ContatoRN();
         $objContatoRN->alterarRN0323($objContatoDTO);
 
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_OK, 'Usuário "' . $strSigla . '" atualizado.');
+        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_OK, 'UsuÃ¡rio "' . $strSigla . '" atualizado.');
       } catch (Exception $e) {
         $arrResultado[] = $this->linhaResultado($numLinha, self::STA_ERRO, $this->obterMensagemErro($e));
       }
@@ -698,7 +698,7 @@ class CargaEmLoteRN extends InfraRN {
       if ($strNomeTabela === null || trim($strNomeTabela) === '') {
         throw new InfraException('Nenhuma Tabela de Assuntos marcada como atual foi encontrada.');
       }
-      throw new InfraException('Tabela de Assuntos "' . $strNomeTabela . '" não encontrada.');
+      throw new InfraException('Tabela de Assuntos "' . $strNomeTabela . '" nÃ£o encontrada.');
     }
     return $arrRet[0];
   }
@@ -720,7 +720,7 @@ class CargaEmLoteRN extends InfraRN {
     if (strpos($strNormalizado, 'elimina') === 0) {
       return AssuntoRN::$TD_ELIMINACAO;
     }
-    throw new InfraException('Destinação "' . $strDestinacao . '" não reconhecida (use "Guarda" ou "Eliminação").');
+    throw new InfraException('DestinaÃ§Ã£o "' . $strDestinacao . '" nÃ£o reconhecida (use "Guarda" ou "EliminaÃ§Ã£o").');
   }
 
   // InfraRN::__call() (magia de despacho publico, codigo do core) so aceita um segundo
@@ -755,7 +755,7 @@ class CargaEmLoteRN extends InfraRN {
         $strObs = trim($c[7] ?? '');
 
         if ($strCodigo === '' || $strNome === '') {
-          throw new InfraException('Linha incompleta (código/nome do assunto obrigatórios).');
+          throw new InfraException('Linha incompleta (cÃ³digo/nome do assunto obrigatÃ³rios).');
         }
 
         $strSinEstrutural = ($strChkEstrutural === 'S') ? 'S' : 'N';
@@ -766,7 +766,7 @@ class CargaEmLoteRN extends InfraRN {
         $objAssuntoDTOFiltro->setStrCodigoEstruturado($strCodigo);
         $objAssuntoRN = new AssuntoRN();
         if ($objAssuntoRN->contarRN0249($objAssuntoDTOFiltro) > 0) {
-          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Assunto "' . $strCodigo . '" já existe.');
+          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Assunto "' . $strCodigo . '" jÃ¡ existe.');
           continue;
         }
 
@@ -778,7 +778,7 @@ class CargaEmLoteRN extends InfraRN {
         $objAssuntoDTO->setStrSinEstrutural($strSinEstrutural);
         if ($strSinEstrutural === 'N') {
           if ($strPrazoCorrente === '' || $strPrazoIntermed === '' || $strDestinacao === '') {
-            throw new InfraException('Assunto "' . $strCodigo . '" não é estrutural - prazo corrente, prazo intermediário e destinação são obrigatórios.');
+            throw new InfraException('Assunto "' . $strCodigo . '" nÃ£o Ã© estrutural - prazo corrente, prazo intermediÃ¡rio e destinaÃ§Ã£o sÃ£o obrigatÃ³rios.');
           }
           $objAssuntoDTO->setNumPrazoCorrente($strPrazoCorrente);
           $objAssuntoDTO->setNumPrazoIntermediario($strPrazoIntermed);
@@ -847,7 +847,7 @@ class CargaEmLoteRN extends InfraRN {
       case 'SIG':
         return ProtocoloRN::$NA_SIGILOSO;
       default:
-        throw new InfraException('Nível de acesso "' . $strToken . '" não reconhecido (use PUB, RES ou SIG).');
+        throw new InfraException('NÃ­vel de acesso "' . $strToken . '" nÃ£o reconhecido (use PUB, RES ou SIG).');
     }
   }
 
@@ -872,7 +872,7 @@ class CargaEmLoteRN extends InfraRN {
     $objAssuntoRN = new AssuntoRN();
     $arrRet = $objAssuntoRN->listarRN0247($dto);
     if (count($arrRet) === 0) {
-      throw new InfraException('Assunto "' . $strCodigo . '" não encontrado na Tabela de Assuntos atual (cadastre antes pela carga de Assuntos).');
+      throw new InfraException('Assunto "' . $strCodigo . '" nÃ£o encontrado na Tabela de Assuntos atual (cadastre antes pela carga de Assuntos).');
     }
     return $arrRet[0];
   }
@@ -883,7 +883,7 @@ class CargaEmLoteRN extends InfraRN {
   // Nome ser globalmente unico.
   private function resolverHipoteseLegal(string $strTexto): HipoteseLegalDTO {
     if (!preg_match('/^(.*)\s\(([^()]*)\)$/', trim($strTexto), $arrMatch)) {
-      throw new InfraException('Hipótese legal "' . $strTexto . '" não está no formato esperado ("Nome (Base legal)").');
+      throw new InfraException('HipÃ³tese legal "' . $strTexto . '" nÃ£o estÃ¡ no formato esperado ("Nome (Base legal)").');
     }
     $dto = new HipoteseLegalDTO();
     $dto->setBolExclusaoLogica(false);
@@ -893,7 +893,7 @@ class CargaEmLoteRN extends InfraRN {
     $objHipoteseLegalRN = new HipoteseLegalRN();
     $arrRet = $objHipoteseLegalRN->listar($dto);
     if (count($arrRet) === 0) {
-      throw new InfraException('Hipótese legal "' . $strTexto . '" não encontrada.');
+      throw new InfraException('HipÃ³tese legal "' . $strTexto . '" nÃ£o encontrada.');
     }
     return $arrRet[0];
   }
@@ -934,7 +934,7 @@ class CargaEmLoteRN extends InfraRN {
         $strInternoSistema = $c[13] ?? '';
 
         if ($strNome === '') {
-          throw new InfraException('Linha incompleta (nome do tipo de processo obrigatório).');
+          throw new InfraException('Linha incompleta (nome do tipo de processo obrigatÃ³rio).');
         }
 
         $strSinOuvidoria = $this->resolverSinalizadorSimNao($strExclusivoOuvidoria);
@@ -947,7 +947,7 @@ class CargaEmLoteRN extends InfraRN {
         $objTipoProcedimentoDTOFiltro->setStrSinOuvidoria($strSinOuvidoria);
         $objTipoProcedimentoRN = new TipoProcedimentoRN();
         if ($objTipoProcedimentoRN->contarRN0270($objTipoProcedimentoDTOFiltro) > 0) {
-          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Tipo de Processo "' . $strNome . '" já existe.');
+          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Tipo de Processo "' . $strNome . '" jÃ¡ existe.');
           continue;
         }
 
@@ -1000,7 +1000,7 @@ class CargaEmLoteRN extends InfraRN {
             foreach ($arrSiglasUnidadeRestricao as $strSiglaUnidadeRestricao) {
               $objUnidadeDTORestricao = $this->resolverUnidade($objOrgaoDTORestricao->getNumIdOrgao(), $strSiglaUnidadeRestricao);
               if ($objUnidadeDTORestricao === null) {
-                throw new InfraException('Unidade "' . $strSiglaUnidadeRestricao . '" não encontrada no órgão "' . $strSiglaOrgaoRestricao . '".');
+                throw new InfraException('Unidade "' . $strSiglaUnidadeRestricao . '" nÃ£o encontrada no Ã³rgÃ£o "' . $strSiglaOrgaoRestricao . '".');
               }
               $objRestricaoDTO = new TipoProcedRestricaoDTO();
               $objRestricaoDTO->setNumIdOrgao($objOrgaoDTORestricao->getNumIdOrgao());
@@ -1013,7 +1013,7 @@ class CargaEmLoteRN extends InfraRN {
         // Niveis de acesso permitidos (obrigatorio pelo menos um)
         $arrTokensNiveis = $this->parseListaPontoVirgula($strNiveisPermitidos);
         if (count($arrTokensNiveis) === 0) {
-          throw new InfraException('Níveis de acesso permitidos não informados.');
+          throw new InfraException('NÃ­veis de acesso permitidos nÃ£o informados.');
         }
         $arrObjNivelAcessoPermitidoDTO = array();
         foreach ($arrTokensNiveis as $strTokenNivel) {
@@ -1024,7 +1024,7 @@ class CargaEmLoteRN extends InfraRN {
         }
 
         if ($strNivelSugerido === '') {
-          throw new InfraException('Sugestão para o nível de acesso não informada.');
+          throw new InfraException('SugestÃ£o para o nÃ­vel de acesso nÃ£o informada.');
         }
         $strStaNivelAcessoSugestao = $this->resolverStaNivelAcesso($strNivelSugerido);
 

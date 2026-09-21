@@ -28,7 +28,7 @@ SessaoSip::getInstance()->validarPermissao($_GET['acao']);
 $strTitulo = 'Carga em Lote (SIP)';
 $arrTiposCarga = array(
   'unidades_e_hierarquia' => 'Unidades e Hierarquia',
-  'usuarios_e_permissoes' => 'Usu·rios e Primeiras Permissıes',
+  'usuarios_e_permissoes' => 'Usu√°rios e Primeiras Permiss√µes',
 );
 
 const CHAVE_ESTADO_SESSAO = 'sipCargaEmLoteEstado';
@@ -109,7 +109,7 @@ try {
           $arrRetornoLote = $objCargaEmLoteRN->processarUsuariosEPermissoes($arrParametrosChamada);
           break;
         default:
-          throw new InfraException('Tipo de carga desconhecido em andamento na sess„o.');
+          throw new InfraException('Tipo de carga desconhecido em andamento na sess√£o.');
       }
 
       $arrEstado['resultado'] = array_merge($arrEstado['resultado'], $arrRetornoLote['resultado']);
@@ -239,9 +239,9 @@ PaginaSip::getInstance()->abrirBody($strTitulo);
     <label id="lblArquivo" for="filArquivo" class="infraLabelObrigatorio">Arquivo (.csv, .xlsx ou .ods):</label>
     <input type="file" id="filArquivo" name="filArquivo" accept=".csv,.xlsx,.ods"/>
     <p style="color:#666;font-style:italic;">Isto pode demorar um pouco, dependendo da
-    quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento È
-    feito em lotes de <?=CargaEmLoteRN::TAMANHO_LOTE?> - esta tela se atualizar·
-    periodicamente com o progresso, sozinha, atÈ concluir. N„o feche nem atualize a
+    quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento √©
+    feito em lotes de <?=CargaEmLoteRN::TAMANHO_LOTE?> - esta tela se atualizar√°
+    periodicamente com o progresso, sozinha, at√© concluir. N√£o feche nem atualize a
     janela manualmente enquanto isso.</p>
     </div>
 
@@ -256,8 +256,8 @@ PaginaSip::getInstance()->abrirBody($strTitulo);
     PaginaSip::getInstance()->abrirAreaDados('10em');
     ?>
     <p><b>Processando <?=PaginaSip::tratarHTML($arrTiposCarga[$strTipoCargaEmAndamento] ?? $strTipoCargaEmAndamento)?>...</b>
-    <?=$numLinhasProcessadas?> de <?=$numTotalLinhas?> linha(s) do arquivo j· passaram pelo
-    sistema. Esta tela vai se atualizar sozinha em instantes - n„o feche nem atualize a
+    <?=$numLinhasProcessadas?> de <?=$numTotalLinhas?> linha(s) do arquivo j√° passaram pelo
+    sistema. Esta tela vai se atualizar sozinha em instantes - n√£o feche nem atualize a
     janela manualmente.</p>
     <?
     PaginaSip::getInstance()->fecharAreaDados();
@@ -268,17 +268,17 @@ PaginaSip::getInstance()->abrirBody($strTitulo);
   if ($arrResultado !== null) {
     ?>
     <div id="divResultadoCargaEmLote">
-    <p><b><?=$bolProcessamentoConcluido ? 'Resultado:' : 'Resultado parcial (atÈ agora):'?></b><br/>
+    <p><b><?=$bolProcessamentoConcluido ? 'Resultado:' : 'Resultado parcial (at√© agora):'?></b><br/>
     <?
     if ($arrResumoPorOperacao !== null) {
       foreach ($arrResumoPorOperacao as $arrResumoOperacao) {
-        echo $arrResumoOperacao['tally']['ok'] . ' ' . PaginaSip::tratarHTML($arrResumoOperacao['rotulo']) . ' cadastrado(s), ' . $arrResumoOperacao['tally']['pulado'] . ' pulado(s) (j· existiam), ' . $arrResumoOperacao['tally']['erro'] . ' com erro.<br/>';
+        echo $arrResumoOperacao['tally']['ok'] . ' ' . PaginaSip::tratarHTML($arrResumoOperacao['rotulo']) . ' cadastrado(s), ' . $arrResumoOperacao['tally']['pulado'] . ' pulado(s) (j√° existiam), ' . $arrResumoOperacao['tally']['erro'] . ' com erro.<br/>';
       }
     } else {
       $numOk = count(array_filter($arrResultado, function ($r) { return $r['status'] === CargaEmLoteRN::STA_OK; }));
       $numPulado = count(array_filter($arrResultado, function ($r) { return $r['status'] === CargaEmLoteRN::STA_PULADO; }));
       $numErro = count(array_filter($arrResultado, function ($r) { return $r['status'] === CargaEmLoteRN::STA_ERRO; }));
-      echo $numOk . ' cadastrado(s), ' . $numPulado . ' pulado(s) (j· existiam), ' . $numErro . ' com erro.';
+      echo $numOk . ' cadastrado(s), ' . $numPulado . ' pulado(s) (j√° existiam), ' . $numErro . ' com erro.';
     }
     ?>
     </p>

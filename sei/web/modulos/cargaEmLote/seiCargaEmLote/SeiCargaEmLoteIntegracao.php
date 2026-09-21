@@ -31,7 +31,7 @@ class SeiCargaEmLoteIntegracao extends SeiIntegracao {
   }
 
   public function getInstituicao() {
-    return 'Processo Eletrônico Nacional - PEN';
+    return 'Processo EletrÃ´nico Nacional - PEN';
   }
 
   public function inicializar($strVersaoSEI) {
