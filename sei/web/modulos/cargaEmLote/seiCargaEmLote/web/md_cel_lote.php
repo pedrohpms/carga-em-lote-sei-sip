@@ -2,11 +2,11 @@
 /**
  * Tela do modulo Carga em Lote (SEI): escolhe o tipo de carga, envia o .csv/.xlsx/.ods e
  * mostra o relatorio linha a linha do processamento. Incluida via
- * SeiCargaEmLoteIntegracao::processarControlador(), ja dentro do controlador.php do SEI
+ * MdCelSeiIntegracao::processarControlador(), ja dentro do controlador.php do SEI
  * (sessao/pagina ja inicializadas) - segue o mesmo padrao das demais telas do SEI, inclusive
  * repetindo o require_once/session_start do topo (idempotente mesmo ja tendo rodado antes).
  *
- * Processamento particionado em lotes (CargaEmLoteRN::TAMANHO_LOTE linhas por vez, varias
+ * Processamento particionado em lotes (MdCelSeiRN::TAMANHO_LOTE linhas por vez, varias
  * requisicoes HTTP curtas em sequencia via <meta refresh>) em vez de uma unica requisicao
  * longa - existe porque o timeout que interrompe uma carga grande normalmente NAO e do PHP
  * (o modulo nao controla isso, e so codigo acrescentado a uma instalacao SEI ja existente) e
@@ -25,17 +25,28 @@ SessaoSEI::getInstance()->validarLink();
 SessaoSEI::getInstance()->validarPermissao($_GET['acao']);
 
 $strTitulo = 'Carga em Lote (SEI)';
-$arrTiposCarga = array(
-  'unidades_complementar' => 'Dados Complementares de Unidade',
-  'contato_usuarios' => 'Contato de Usu·rios',
-  'assuntos' => 'Assuntos',
-  'tipos_processo' => 'Tipos de Processo',
+// Tipo de carga => [rotulo, recurso exigido]. O seletor mostra so as cargas que o perfil do
+// operador permite (verificarPermissao); a RN valida de novo em cada chamada.
+$arrTiposCargaCatalogo = array(
+  'unidades_complementar' => array('Dados Complementares de Unidade', MdCelSeiRN::RECURSO_UNIDADE_COMPLEMENTAR),
+  'contato_usuarios' => array('Contato de Usu√°rios', MdCelSeiRN::RECURSO_CONTATO_USUARIOS),
+  'assuntos' => array('Assuntos', MdCelSeiRN::RECURSO_ASSUNTOS),
+  'tipos_processo' => array('Tipos de Processo', MdCelSeiRN::RECURSO_TIPOS_PROCESSO),
 );
+$arrTiposCarga = array();
+foreach ($arrTiposCargaCatalogo as $strChaveTipo => $arrItemTipo) {
+  if (SessaoSEI::getInstance()->verificarPermissao($arrItemTipo[1])) {
+    $arrTiposCarga[$strChaveTipo] = $arrItemTipo[0];
+  }
+}
+if (count($arrTiposCarga) === 0) {
+  throw new InfraException('O perfil do usu√°rio n√£o permite nenhuma carga em lote nesta unidade.');
+}
 
 // Chave unica na sessao pra guardar o estado do processamento em andamento (arquivo temp,
 // quantas linhas ja foram processadas, relatorio acumulado) entre os recarregamentos
 // automaticos da pagina. So existe enquanto uma carga esta em andamento.
-const CHAVE_ESTADO_SESSAO = 'seiCargaEmLoteEstado';
+const CHAVE_ESTADO_SESSAO = 'md_cel_sei_estado';
 
 $arrResultado = null;      // relatorio acumulado ate agora (parcial ou completo)
 $numTotalLinhas = null;
@@ -50,6 +61,10 @@ $strTipoCarga = PaginaSEI::POST('selTipoCarga');
 // caso de reexibir a tela apos um erro de validacao com o tipo de carga ja selecionado) - o
 // toggle em tempo real e feito por JS (trocarTipoCarga()), mesma tecnica.
 $strDisplayTabelaAssuntos = ($strTipoCarga === 'assuntos') ? '' : 'display:none;';
+
+// Limite de tamanho do arquivo (ver MdCelSeiRN::obterLimiteUploadMbConectado()): usado no
+// aviso da tela, na validacao antes do envio (JS) e na validacao do servidor (ETAPA 1).
+$numLimiteUploadMb = (new MdCelSeiRN())->obterLimiteUploadMb();
 
 // Lista de Tabelas de Assuntos existentes, para a carga de Assuntos poder escolher uma
 // tabela diferente da atual (ex.: orgao preparando uma tabela nova, ainda nao promovida a
@@ -82,12 +97,16 @@ try {
       throw new InfraException('Selecione um arquivo .csv, .xlsx ou .ods.');
     }
 
+    if ($_FILES['filArquivo']['size'] > $numLimiteUploadMb * 1024 * 1024) {
+      throw new InfraException('O arquivo tem ' . round($_FILES['filArquivo']['size'] / 1048576, 1) . ' Mb e excede o limite de ' . $numLimiteUploadMb . ' Mb (par√¢metro SEI_TAM_MB_DOC_EXTERNO).');
+    }
+
     // processarUpload() nao retorna valor: da echo direto no resultado (pensado para ser
     // lido por um iframe/JS) - mesma observacao ja feita no modulo SIP.
     ob_start();
     // bolArquivoTemporarioIdentificado=true preserva o nome/extensao original no arquivo
     // temporario (sanitizado) - precisamos da extensao pra escolher o leitor certo em
-    // CargaEmLoteRN::lerCsv() (csv/xlsx/ods).
+    // MdCelSeiRN::lerCsv() (csv/xlsx/ods).
     PaginaSEI::getInstance()->processarUpload('filArquivo', DIR_SEI_TEMP, true, true);
     $strRetUpload = ob_get_clean();
     $arrRetUpload = explode('#', $strRetUpload);
@@ -112,36 +131,36 @@ try {
   }
 
   // ETAPA 2 de 3 - roda a cada requisicao (POST inicial OU GET de recarregamento
-  // automatico): processa UM lote (CargaEmLoteRN::TAMANHO_LOTE linhas) e acumula o resultado
+  // automatico): processa UM lote (MdCelSeiRN::TAMANHO_LOTE linhas) e acumula o resultado
   // na sessao. So para de rodar quando offset >= total (carga concluida).
   if (isset($_SESSION[CHAVE_ESTADO_SESSAO])) {
     $arrEstado = &$_SESSION[CHAVE_ESTADO_SESSAO];
     $strTipoCargaEmAndamento = $arrEstado['tipoCarga'];
 
     if ($arrEstado['total'] === null || $arrEstado['offset'] < $arrEstado['total']) {
-      $objCargaEmLoteRN = new CargaEmLoteRN();
+      $objMdCelRN = new MdCelSeiRN();
       $arrParametrosChamada = array(
         'csv' => $arrEstado['arquivo'],
         'offset' => $arrEstado['offset'],
-        'limite' => CargaEmLoteRN::TAMANHO_LOTE,
+        'limite' => MdCelSeiRN::TAMANHO_LOTE,
       );
 
       switch ($arrEstado['tipoCarga']) {
         case 'unidades_complementar':
-          $arrRetornoLote = $objCargaEmLoteRN->processarUnidadesComplementar($arrParametrosChamada);
+          $arrRetornoLote = $objMdCelRN->processarUnidadesComplementar($arrParametrosChamada);
           break;
         case 'contato_usuarios':
-          $arrRetornoLote = $objCargaEmLoteRN->processarContatoUsuarios($arrParametrosChamada);
+          $arrRetornoLote = $objMdCelRN->processarContatoUsuarios($arrParametrosChamada);
           break;
         case 'assuntos':
           $arrParametrosChamada['nomeTabela'] = $arrEstado['nomeTabela'];
-          $arrRetornoLote = $objCargaEmLoteRN->processarAssuntos($arrParametrosChamada);
+          $arrRetornoLote = $objMdCelRN->processarAssuntos($arrParametrosChamada);
           break;
         case 'tipos_processo':
-          $arrRetornoLote = $objCargaEmLoteRN->processarTiposProcesso($arrParametrosChamada);
+          $arrRetornoLote = $objMdCelRN->processarTiposProcesso($arrParametrosChamada);
           break;
         default:
-          throw new InfraException('Tipo de carga desconhecido em andamento na sess„o.');
+          throw new InfraException('Tipo de carga desconhecido em andamento na sess√£o.');
       }
 
       $arrEstado['resultado'] = array_merge($arrEstado['resultado'], $arrRetornoLote['resultado']);
@@ -200,6 +219,8 @@ PaginaSEI::getInstance()->fecharStyle();
 PaginaSEI::getInstance()->montarJavaScript();
 PaginaSEI::getInstance()->abrirJavaScript();
 ?>
+  var numLimiteUploadMb = <?=$numLimiteUploadMb?>;
+
   function trocarTipoCarga() {
     if (document.getElementById('selTipoCarga').value == 'assuntos') {
       document.getElementById('divTabelaAssuntos').style.display = 'block';
@@ -216,6 +237,12 @@ PaginaSEI::getInstance()->abrirJavaScript();
     }
     if (document.getElementById('filArquivo').value == '') {
       alert('Selecione um arquivo .csv, .xlsx ou .ods.');
+      document.getElementById('filArquivo').focus();
+      return false;
+    }
+    var arqSelecionado = document.getElementById('filArquivo').files[0];
+    if (arqSelecionado && arqSelecionado.size > numLimiteUploadMb * 1024 * 1024) {
+      alert('O arquivo tem ' + (arqSelecionado.size / 1048576).toFixed(1) + ' Mb e excede o limite de ' + numLimiteUploadMb + ' Mb.');
       document.getElementById('filArquivo').focus();
       return false;
     }
@@ -282,10 +309,10 @@ PaginaSEI::getInstance()->abrirBody($strTitulo);
     <label id="lblArquivo" for="filArquivo" class="infraLabelObrigatorio">Arquivo (.csv, .xlsx ou .ods):</label>
     <input type="file" id="filArquivo" name="filArquivo" accept=".csv,.xlsx,.ods"/>
     <p style="color:#666;font-style:italic;">Isto pode demorar um pouco, dependendo da
-    quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento È
-    feito em lotes de <?=CargaEmLoteRN::TAMANHO_LOTE?> - esta tela se atualizar·
-    periodicamente com o progresso, sozinha, atÈ concluir. N„o feche nem atualize a
-    janela manualmente enquanto isso.</p>
+    quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento √©
+    feito em lotes de <?=MdCelSeiRN::TAMANHO_LOTE?> - esta tela se atualizar√°
+    periodicamente com o progresso, sozinha, at√© concluir. N√£o feche nem atualize a
+    janela manualmente enquanto isso. Tamanho m√°ximo do arquivo: <?=$numLimiteUploadMb?> Mb.</p>
     </div>
 
     <?
@@ -301,8 +328,8 @@ PaginaSEI::getInstance()->abrirBody($strTitulo);
     PaginaSEI::getInstance()->abrirAreaDados('10em');
     ?>
     <p><b>Processando <?=PaginaSEI::tratarHTML($arrTiposCarga[$strTipoCargaEmAndamento] ?? $strTipoCargaEmAndamento)?>...</b>
-    <?=$numLinhasProcessadas?> de <?=$numTotalLinhas?> linha(s) do arquivo j· passaram pelo
-    sistema. Esta tela vai se atualizar sozinha em instantes - n„o feche nem atualize a
+    <?=$numLinhasProcessadas?> de <?=$numTotalLinhas?> linha(s) do arquivo j√° passaram pelo
+    sistema. Esta tela vai se atualizar sozinha em instantes - n√£o feche nem atualize a
     janela manualmente.</p>
     <?
     PaginaSEI::getInstance()->fecharAreaDados();
@@ -311,13 +338,13 @@ PaginaSEI::getInstance()->abrirBody($strTitulo);
 
   <?
   if ($arrResultado !== null) {
-    $numOk = count(array_filter($arrResultado, function ($r) { return $r['status'] === CargaEmLoteRN::STA_OK; }));
-    $numPulado = count(array_filter($arrResultado, function ($r) { return $r['status'] === CargaEmLoteRN::STA_PULADO; }));
-    $numErro = count(array_filter($arrResultado, function ($r) { return $r['status'] === CargaEmLoteRN::STA_ERRO; }));
+    $numOk = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSeiRN::STA_OK; }));
+    $numPulado = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSeiRN::STA_PULADO; }));
+    $numErro = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSeiRN::STA_ERRO; }));
     ?>
     <div id="divResultadoCargaEmLote">
-    <p><b><?=$bolProcessamentoConcluido ? 'Resultado:' : 'Resultado parcial (atÈ agora):'?></b>
-    <?=$numOk?> atualizado(s)/cadastrado(s), <?=$numPulado?> pulado(s) (j· existiam), <?=$numErro?> com erro.</p>
+    <p><b><?=$bolProcessamentoConcluido ? 'Resultado:' : 'Resultado parcial (at√© agora):'?></b>
+    <?=$numOk?> atualizado(s)/cadastrado(s), <?=$numPulado?> pulado(s) (j√° existiam), <?=$numErro?> com erro.</p>
     <table class="infraTable" width="100%">
       <thead>
         <tr><th>Linha</th><th>Status</th><th>Mensagem</th></tr>

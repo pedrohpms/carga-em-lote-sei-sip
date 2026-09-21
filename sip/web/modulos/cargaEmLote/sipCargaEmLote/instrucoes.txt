@@ -10,7 +10,7 @@ Instrucoes para instalacao do modulo Carga em Lote (SIP)
              /* ... outras chaves ... */
 
             'Modulos' => array(
-                 'SipCargaEmLoteIntegracao' => 'cargaEmLote/sipCargaEmLote'
+                 'MdCelSipIntegracao' => 'cargaEmLote/sipCargaEmLote'
                  )
          ),
 
@@ -23,19 +23,38 @@ Instrucoes para instalacao do modulo Carga em Lote (SIP)
     icones de item de menu - nao ha caminho relativo ao modulo para isso, e uma restricao
     do proprio framework).
 
-6 - rodar o script de instalacao, que cria (se ainda nao existirem) o recurso
-    md_carga_em_lote, o perfil "Carga em Lote" e o item de menu, e ja atribui o recurso e o
-    item de menu ao perfil. Usa o mesmo mecanismo que o proprio TRF4 usa para instalar
-    recursos do SIP (InfraScriptVersao + ScriptSip, o mesmo padrao de
-    sip/scripts/atualizar_recursos_sei.php) - idempotente, seguro reexecutar. Precisa ser
-    rodado via linha de comando dentro do container (pede usuario/senha do banco
-    interativamente):
+6 - rodar os scripts de release do pacote (Carga em Lote e um pacote so, com um modulo para
+    cada sistema; os dois scripts servem aos dois modulos). Rodam via linha de comando dentro
+    do container e pedem usuario/senha do banco interativamente. A ordem importa: primeiro o
+    do SEI, depois o do SIP.
 
-    docker exec -it httpd php /opt/sip/web/modulos/cargaEmLote/sipCargaEmLote/scripts/instalar.php
+    docker exec -it httpd php /opt/sei/scripts/sei_atualizar_versao_modulo_cel.php
+    docker exec -it httpd php /opt/sip/scripts/sip_atualizar_versao_modulo_cel.php
 
-7 - atribuir o perfil "Carga em Lote" (criado pelo passo 6) a quem for operar as cargas
-    (SIP > Perfis > Montar, ou direto no cadastro do usuario) - unico passo que continua
-    manual, pois depende de decisao de quem tera acesso em cada instalacao.
+    O do SEI so registra a versao (MD_CEL_VERSAO), porque o modulo nao tem tabelas. O do SIP
+    cria, nos sistemas SEI e SIP, o perfil MD_CEL, a tela (md_cel_lote), o item de menu, um
+    recurso por carga e a regra de auditoria MD_CEL. Idempotente, seguro reexecutar. Se a
+    versao 1.0.0 (instalador antigo, scripts/instalar.php) estiver instalada, o script do SIP
+    renomeia o perfil e o recurso antigos em vez de recriar, e as permissoes ja concedidas
+    continuam valendo.
+
+7 - atribuir o perfil MD_CEL (sistema SIP) a quem for operar as cargas do SIP (SIP > Perfis >
+    Montar, ou direto no cadastro do usuario). O perfil traz todas as cargas. Para liberar so
+    algumas, crie outro perfil com o recurso da tela (md_cel_lote) e so os recursos das
+    cargas desejadas:
+
+      md_cel_unidade_cadastrar     Unidades
+      md_cel_hierarquia_cadastrar  Hierarquia
+      md_cel_usuario_cadastrar     Usuarios
+      md_cel_permissao_cadastrar   Primeiras permissoes
+
+    As cargas da tela sao combinadas: "Unidades e Hierarquia" exige os dois primeiros
+    recursos e "Usuarios e Primeiras Permissoes" exige os dois ultimos. A tela mostra so as
+    cargas que o perfil do operador permite, e cada chamada valida o recurso de novo e grava a
+    trilha de auditoria (faixa de linhas, nunca o conteudo das linhas). Alem do recurso do
+    modulo, o operador precisa dos recursos das RN do SIP que a carga usa (unidade_cadastrar,
+    usuario_cadastrar, permissao_cadastrar, rel_hierarquia_unidade_cadastrar): o modulo nao
+    concede escrita alem do perfil do operador.
 
     Importante: quem receber o perfil precisa fazer logout/login de novo (ou aguardar a
     sessao expirar) para o item de menu aparecer - o menu de cada sistema e montado uma
@@ -51,14 +70,14 @@ conteudo nos 3 formatos ficam em exemplos/, dentro da pasta deste modulo:
         exemploUnidades.{csv,xlsx,ods}   (Unidades e Hierarquia)
         exemploUsuarios.{csv,xlsx,ods}   (Usuarios e Primeiras Permissoes)
 
-Processamento em lotes (arquivos grandes): a tela processa CargaEmLoteRN::TAMANHO_LOTE linhas
+Processamento em lotes (arquivos grandes): a tela processa MdCelSipRN::TAMANHO_LOTE linhas
 por vez (50 por padrao) e se recarrega sozinha automaticamente ate concluir, mostrando o
 progresso ("X de Y linhas processadas") a cada recarregamento. Existe porque o timeout que
 interrompe uma carga grande normalmente NAO e do PHP (o modulo nao controla isso - so
 acrescenta arquivos a uma instalacao SIP ja existente) e sim do servidor web/proxy na frente
 dele, fora do alcance do modulo. Se a instalacao real tiver um timeout mais agressivo (comum
 atras de proxy reverso/balanceador corporativo) e uma carga ainda assim estourar, reduza a
-constante TAMANHO_LOTE no topo de rn/CargaEmLoteRN.php (calibrado neste laboratorio: ~2,1s por
+constante TAMANHO_LOTE no topo de rn/MdCelSipRN.php (calibrado neste laboratorio: ~2,1s por
 linha processada - cadastro de usuario + primeira permissao juntos -, 50 linhas ficam em
 ~105s - ajuste a conta pro teto real da instalacao, com margem de seguranca). O estado do
 processamento (arquivo, quantas linhas ja foram feitas, relatorio acumulado) fica na sessao do

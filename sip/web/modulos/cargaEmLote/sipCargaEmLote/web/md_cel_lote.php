@@ -2,12 +2,12 @@
 /**
  * Tela do modulo Carga em Lote (SIP): escolhe o tipo de carga, envia o .csv/.xlsx/.ods e
  * mostra o relatorio linha a linha do processamento. Incluida via
- * SipCargaEmLoteIntegracao::processarControlador(), ja dentro do controlador.php do SIP
+ * MdCelSipIntegracao::processarControlador(), ja dentro do controlador.php do SIP
  * (sessao/pagina ja inicializadas) - segue o mesmo padrao das demais telas do SIP (ex.:
  * sip/web/unidade_cadastro.php), inclusive repetindo o require_once/session_start do topo,
  * que e seguro (idempotente) mesmo ja tendo rodado antes.
  *
- * Processamento particionado em lotes (CargaEmLoteRN::TAMANHO_LOTE linhas por vez, varias
+ * Processamento particionado em lotes (MdCelSipRN::TAMANHO_LOTE linhas por vez, varias
  * requisicoes HTTP curtas em sequencia via <meta refresh>) em vez de uma unica requisicao
  * longa - existe porque o timeout que interrompe uma carga grande normalmente NAO e do PHP
  * (o modulo nao controla isso, e so codigo acrescentado a uma instalacao SIP ja existente) e
@@ -26,12 +26,28 @@ SessaoSip::getInstance()->validarLink();
 SessaoSip::getInstance()->validarPermissao($_GET['acao']);
 
 $strTitulo = 'Carga em Lote (SIP)';
-$arrTiposCarga = array(
-  'unidades_e_hierarquia' => 'Unidades e Hierarquia',
-  'usuarios_e_permissoes' => 'Usu·rios e Primeiras Permissıes',
+// Tipo de carga => [rotulo, recursos exigidos]. As cargas combinadas exigem os dois recursos.
+// O seletor mostra so as cargas que o perfil do operador permite (verificarPermissao); a RN
+// valida de novo em cada chamada.
+$arrTiposCargaCatalogo = array(
+  'unidades_e_hierarquia' => array('Unidades e Hierarquia', array(MdCelSipRN::RECURSO_UNIDADE, MdCelSipRN::RECURSO_HIERARQUIA)),
+  'usuarios_e_permissoes' => array('Usu√°rios e Primeiras Permiss√µes', array(MdCelSipRN::RECURSO_USUARIO, MdCelSipRN::RECURSO_PERMISSAO)),
 );
+$arrTiposCarga = array();
+foreach ($arrTiposCargaCatalogo as $strChaveTipo => $arrItemTipo) {
+  $bolPermitido = true;
+  foreach ($arrItemTipo[1] as $strRecursoTipo) {
+    $bolPermitido = $bolPermitido && SessaoSip::getInstance()->verificarPermissao($strRecursoTipo);
+  }
+  if ($bolPermitido) {
+    $arrTiposCarga[$strChaveTipo] = $arrItemTipo[0];
+  }
+}
+if (count($arrTiposCarga) === 0) {
+  throw new InfraException('O perfil do usu√°rio n√£o permite nenhuma carga em lote nesta unidade.');
+}
 
-const CHAVE_ESTADO_SESSAO = 'sipCargaEmLoteEstado';
+const CHAVE_ESTADO_SESSAO = 'md_cel_sip_estado';
 
 $arrResultado = null;
 $numTotalLinhas = null;
@@ -65,7 +81,7 @@ try {
     ob_start();
     // bolArquivoTemporarioIdentificado=true preserva o nome/extensao original no arquivo
     // temporario (sanitizado) - precisamos da extensao pra escolher o leitor certo em
-    // CargaEmLoteRN::lerCsv() (csv/xlsx/ods).
+    // MdCelSipRN::lerCsv() (csv/xlsx/ods).
     PaginaSip::getInstance()->processarUpload('filArquivo', DIR_SIP_TEMP, true, true);
     $strRetUpload = ob_get_clean();
     $arrRetUpload = explode('#', $strRetUpload);
@@ -87,29 +103,29 @@ try {
   }
 
   // ETAPA 2 de 3 - roda a cada requisicao (POST inicial OU GET de recarregamento
-  // automatico): processa UM lote (CargaEmLoteRN::TAMANHO_LOTE linhas) e acumula o resultado
+  // automatico): processa UM lote (MdCelSipRN::TAMANHO_LOTE linhas) e acumula o resultado
   // na sessao. So para de rodar quando offset >= total (carga concluida).
   if (isset($_SESSION[CHAVE_ESTADO_SESSAO])) {
     $arrEstado = &$_SESSION[CHAVE_ESTADO_SESSAO];
     $strTipoCargaEmAndamento = $arrEstado['tipoCarga'];
 
     if ($arrEstado['total'] === null || $arrEstado['offset'] < $arrEstado['total']) {
-      $objCargaEmLoteRN = new CargaEmLoteRN();
+      $objMdCelRN = new MdCelSipRN();
       $arrParametrosChamada = array(
         'csv' => $arrEstado['arquivo'],
         'offset' => $arrEstado['offset'],
-        'limite' => CargaEmLoteRN::TAMANHO_LOTE,
+        'limite' => MdCelSipRN::TAMANHO_LOTE,
       );
 
       switch ($arrEstado['tipoCarga']) {
         case 'unidades_e_hierarquia':
-          $arrRetornoLote = $objCargaEmLoteRN->processarUnidadesEHierarquia($arrParametrosChamada);
+          $arrRetornoLote = $objMdCelRN->processarUnidadesEHierarquia($arrParametrosChamada);
           break;
         case 'usuarios_e_permissoes':
-          $arrRetornoLote = $objCargaEmLoteRN->processarUsuariosEPermissoes($arrParametrosChamada);
+          $arrRetornoLote = $objMdCelRN->processarUsuariosEPermissoes($arrParametrosChamada);
           break;
         default:
-          throw new InfraException('Tipo de carga desconhecido em andamento na sess„o.');
+          throw new InfraException('Tipo de carga desconhecido em andamento na sess√£o.');
       }
 
       $arrEstado['resultado'] = array_merge($arrEstado['resultado'], $arrRetornoLote['resultado']);
@@ -239,10 +255,10 @@ PaginaSip::getInstance()->abrirBody($strTitulo);
     <label id="lblArquivo" for="filArquivo" class="infraLabelObrigatorio">Arquivo (.csv, .xlsx ou .ods):</label>
     <input type="file" id="filArquivo" name="filArquivo" accept=".csv,.xlsx,.ods"/>
     <p style="color:#666;font-style:italic;">Isto pode demorar um pouco, dependendo da
-    quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento È
-    feito em lotes de <?=CargaEmLoteRN::TAMANHO_LOTE?> - esta tela se atualizar·
-    periodicamente com o progresso, sozinha, atÈ concluir. N„o feche nem atualize a
-    janela manualmente enquanto isso.</p>
+    quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento √©
+    feito em lotes de <?=MdCelSipRN::TAMANHO_LOTE?> - esta tela se atualizar√°
+    periodicamente com o progresso, sozinha, at√© concluir. N√£o feche nem atualize a
+    janela manualmente enquanto isso. Tamanho m√°ximo do arquivo: <?=ini_get('upload_max_filesize')?> (limite do PHP; o SIP n√£o tem par√¢metro pr√≥prio para isso).</p>
     </div>
 
     <?
@@ -256,8 +272,8 @@ PaginaSip::getInstance()->abrirBody($strTitulo);
     PaginaSip::getInstance()->abrirAreaDados('10em');
     ?>
     <p><b>Processando <?=PaginaSip::tratarHTML($arrTiposCarga[$strTipoCargaEmAndamento] ?? $strTipoCargaEmAndamento)?>...</b>
-    <?=$numLinhasProcessadas?> de <?=$numTotalLinhas?> linha(s) do arquivo j· passaram pelo
-    sistema. Esta tela vai se atualizar sozinha em instantes - n„o feche nem atualize a
+    <?=$numLinhasProcessadas?> de <?=$numTotalLinhas?> linha(s) do arquivo j√° passaram pelo
+    sistema. Esta tela vai se atualizar sozinha em instantes - n√£o feche nem atualize a
     janela manualmente.</p>
     <?
     PaginaSip::getInstance()->fecharAreaDados();
@@ -268,17 +284,17 @@ PaginaSip::getInstance()->abrirBody($strTitulo);
   if ($arrResultado !== null) {
     ?>
     <div id="divResultadoCargaEmLote">
-    <p><b><?=$bolProcessamentoConcluido ? 'Resultado:' : 'Resultado parcial (atÈ agora):'?></b><br/>
+    <p><b><?=$bolProcessamentoConcluido ? 'Resultado:' : 'Resultado parcial (at√© agora):'?></b><br/>
     <?
     if ($arrResumoPorOperacao !== null) {
       foreach ($arrResumoPorOperacao as $arrResumoOperacao) {
-        echo $arrResumoOperacao['tally']['ok'] . ' ' . PaginaSip::tratarHTML($arrResumoOperacao['rotulo']) . ' cadastrado(s), ' . $arrResumoOperacao['tally']['pulado'] . ' pulado(s) (j· existiam), ' . $arrResumoOperacao['tally']['erro'] . ' com erro.<br/>';
+        echo $arrResumoOperacao['tally']['ok'] . ' ' . PaginaSip::tratarHTML($arrResumoOperacao['rotulo']) . ' cadastrado(s), ' . $arrResumoOperacao['tally']['pulado'] . ' pulado(s) (j√° existiam), ' . $arrResumoOperacao['tally']['erro'] . ' com erro.<br/>';
       }
     } else {
-      $numOk = count(array_filter($arrResultado, function ($r) { return $r['status'] === CargaEmLoteRN::STA_OK; }));
-      $numPulado = count(array_filter($arrResultado, function ($r) { return $r['status'] === CargaEmLoteRN::STA_PULADO; }));
-      $numErro = count(array_filter($arrResultado, function ($r) { return $r['status'] === CargaEmLoteRN::STA_ERRO; }));
-      echo $numOk . ' cadastrado(s), ' . $numPulado . ' pulado(s) (j· existiam), ' . $numErro . ' com erro.';
+      $numOk = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSipRN::STA_OK; }));
+      $numPulado = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSipRN::STA_PULADO; }));
+      $numErro = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSipRN::STA_ERRO; }));
+      echo $numOk . ' cadastrado(s), ' . $numPulado . ' pulado(s) (j√° existiam), ' . $numErro . ' com erro.';
     }
     ?>
     </p>

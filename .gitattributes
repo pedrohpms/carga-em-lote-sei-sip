@@ -1,0 +1,4 @@
+# Fontes PHP e textos do SEI/SIP sao ISO-8859-1 na instalacao. No repositorio o blob fica em UTF-8
+# (leitura correta no GitHub e nos diffs); no checkout o Git converte de volta para ISO-8859-1.
+*.php text working-tree-encoding=iso-8859-1
+*.txt text working-tree-encoding=iso-8859-1
