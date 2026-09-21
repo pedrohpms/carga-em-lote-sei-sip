@@ -14,20 +14,20 @@
  * - Assuntos (Tabela de Assuntos / CCD-TTD)
  * - Tipos de Processo (com assuntos sugeridos, restricoes de orgao/unidade, niveis de acesso)
  *
- * Toda a logica de negocio vive em rn/CargaEmLoteRN.php - esta classe e so o ponto de
+ * Toda a logica de negocio vive em rn/MdCelSeiRN.php - esta classe e so o ponto de
  * extensao que o framework do SEI reconhece (ver processarControlador() abaixo).
  */
 
-class SeiCargaEmLoteIntegracao extends SeiIntegracao {
+class MdCelSeiIntegracao extends SeiIntegracao {
 
-  const ACAO = 'md_carga_em_lote_sei';
+  const ACAO = 'md_cel_lote';
 
   public function getNome() {
     return 'Carga em Lote (SEI)';
   }
 
   public function getVersao() {
-    return '1.0.0';
+    return '2.0.0';
   }
 
   public function getInstituicao() {
@@ -44,7 +44,7 @@ class SeiCargaEmLoteIntegracao extends SeiIntegracao {
 
   public function processarControlador($strAcao) {
     if ($strAcao === self::ACAO) {
-      require __DIR__ . '/web/carga_em_lote_form.php';
+      require __DIR__ . '/web/md_cel_lote.php';
       return true;
     }
     return null;

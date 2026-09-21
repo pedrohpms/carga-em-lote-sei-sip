@@ -41,7 +41,7 @@ Este projeto nasceu como uma tentativa de resolver o mesmo problema de forma mai
 <a name="a-quem-se-destina"></a>
 ## 👨‍🔧 A quem se destina
 
-Usuários com **perfil de Administração do SEI/SIP** — o mesmo público das macros originais. Diferente delas, aqui o acesso é controlado por um perfil próprio (`Carga em Lote` no SIP, `Carga em Lote (SEI)` no SEI), criado pelo script de instalação de cada módulo e atribuído manualmente a quem for operar as cargas.
+Usuários com **perfil de Administração do SEI/SIP** — o mesmo público das macros originais. Diferente delas, aqui o acesso é controlado por um perfil próprio (`MD_CEL`, um em cada sistema), criado pelo script de instalação e atribuído manualmente a quem for operar as cargas. Cada carga tem o seu próprio recurso, então dá para liberar só algumas (ver [Permissões por carga](#permissoes-por-carga)).
 
 > [!WARNING]
 > Estes módulos alteram diretamente cadastros administrativos do SEI/SIP. Antes de usar em produção:
@@ -52,12 +52,26 @@ Usuários com **perfil de Administração do SEI/SIP** — o mesmo público das 
 <a name="como-instalar"></a>
 ## 📥 Como instalar
 
-Cada módulo é autocontido — basta copiar a pasta para dentro da árvore do SEI/SIP e seguir o passo a passo de cada um:
+O pacote traz um módulo para cada sistema e dois scripts de instalação, na mesma estrutura de pastas do SEI/SIP. Copie as pastas `sei/` e `sip/` deste repositório para dentro da árvore do SEI/SIP (os arquivos PHP são ISO-8859-1, como o restante do código do SEI) e siga o passo a passo de cada módulo:
 
 - [`sip/web/modulos/cargaEmLote/sipCargaEmLote/instrucoes.txt`](sip/web/modulos/cargaEmLote/sipCargaEmLote/instrucoes.txt)
 - [`sei/web/modulos/cargaEmLote/seiCargaEmLote/instrucoes.txt`](sei/web/modulos/cargaEmLote/seiCargaEmLote/instrucoes.txt)
 
-Resumo do processo (idêntico para os dois): ativar a chave `Modulos` no arquivo de configuração (`ConfiguracaoSip.php`/`ConfiguracaoSEI.php`), reiniciar o Apache/PHP, e rodar o script de instalação (`scripts/instalar.php`) — cria recurso, perfil e item de menu de forma idempotente, usando o mesmo mecanismo (`InfraScriptVersao` + `ScriptSip`) que o próprio TRF4 usa em `sip/scripts/atualizar_recursos_sei.php`. Em seguida, atribuir o perfil criado a quem for operar as cargas.
+Resumo do processo:
+
+1. Registrar o módulo na chave `Modulos` de cada configuração e reiniciar o Apache/PHP: `'MdCelSeiIntegracao' => 'cargaEmLote/seiCargaEmLote'` em `ConfiguracaoSEI.php` e `'MdCelSipIntegracao' => 'cargaEmLote/sipCargaEmLote'` em `ConfiguracaoSip.php`.
+2. Rodar, dentro do container ou do servidor de aplicação, primeiro o script do SEI e depois o do SIP. Cada um pede usuário e senha do banco:
+
+```bash
+php /opt/sei/scripts/sei_atualizar_versao_modulo_cel.php
+php /opt/sip/scripts/sip_atualizar_versao_modulo_cel.php
+```
+
+3. Atribuir o perfil `MD_CEL` a quem for operar as cargas: o do sistema SEI para as cargas do SEI e o do sistema SIP para as cargas do SIP.
+
+O script do SEI só registra a versão (`MD_CEL_VERSAO`), porque o módulo não tem tabelas. O script do SIP cria, nos dois sistemas, o perfil, a tela, o item de menu, um recurso por carga e a regra de auditoria `MD_CEL`. Os dois são idempotentes: rodar de novo termina com a mensagem de que a versão já está instalada.
+
+**Atualizando da versão 1.0.0.** O script do SIP renomeia o perfil e o recurso da versão anterior em vez de recriá-los. As permissões já concedidas e o item de menu continuam valendo. Antes de rodar, troque na chave `Modulos` os nomes antigos das classes (`SeiCargaEmLoteIntegracao` e `SipCargaEmLoteIntegracao`) pelos novos e remova os arquivos antigos das pastas dos módulos (`*Integracao.php` antigos, `rn/CargaEmLoteRN.php`, `web/carga_em_lote_form.php` e `scripts/instalar.php`). Os parâmetros `CARGA_EM_LOTE_VERSAO` e `CARGA_EM_LOTE_SEI_VERSAO` ficam sem uso no banco do SIP e podem ser removidos à mão.
 
 > [!IMPORTANT]
 > Depois de atribuir o perfil a um usuário, é preciso fazer **logout/login** para o item de menu aparecer — o menu de cada sistema é montado uma única vez no login e fica guardado na sessão (comportamento genérico do framework, não peculiaridade destes módulos).
@@ -99,7 +113,23 @@ Resumo do processo (idêntico para os dois): ativar a chave `Modulos` no arquivo
 
 ### Processamento em lotes (arquivos grandes)
 
-Arquivos com muitas linhas são processados em lotes de `CargaEmLoteRN::TAMANHO_LOTE` (50 por padrão) — a tela se recarrega sozinha automaticamente até concluir. Existe porque o timeout que interromperia uma carga grande normalmente não é do PHP — é do servidor web/proxy nafrente dele, fora do alcance de um módulo que só acrescenta arquivos a uma instalação já existente. Ajuste a constante no topo de `rn/CargaEmLoteRN.php` se a instalação de destino tiver um timeout mais agressivo.
+Arquivos com muitas linhas são processados em lotes de `MdCelSeiRN::TAMANHO_LOTE` e `MdCelSipRN::TAMANHO_LOTE` (50 por padrão) — a tela se recarrega sozinha automaticamente até concluir. Existe porque o timeout que interromperia uma carga grande normalmente não é do PHP — é do servidor web/proxy nafrente dele, fora do alcance de um módulo que só acrescenta arquivos a uma instalação já existente. Ajuste a constante no topo de `rn/MdCelSeiRN.php` e `rn/MdCelSipRN.php` se a instalação de destino tiver um timeout mais agressivo.
+
+<a name="permissoes-por-carga"></a>
+### Permissões por carga
+
+O perfil `MD_CEL` traz todas as cargas do sistema. Para liberar só algumas, crie outro perfil com o recurso da tela (`md_cel_lote`) e apenas os recursos das cargas desejadas. A tela mostra só as cargas que o perfil do operador permite, e cada chamada valida o recurso de novo e grava a trilha de auditoria (arquivo e faixa de linhas, nunca o conteúdo das linhas).
+
+| Sistema | Recurso | Carga |
+|---|---|---|
+| SEI | `md_cel_unidade_alterar` | Dados Complementares de Unidade |
+| SEI | `md_cel_contato_alterar` | Contato de Usuários |
+| SEI | `md_cel_assunto_cadastrar` | Assuntos |
+| SEI | `md_cel_tipo_procedimento_cadastrar` | Tipos de Processo |
+| SIP | `md_cel_unidade_cadastrar` e `md_cel_hierarquia_cadastrar` | Unidades e Hierarquia (exige os dois) |
+| SIP | `md_cel_usuario_cadastrar` e `md_cel_permissao_cadastrar` | Usuários e Primeiras Permissões (exige os dois) |
+
+Além do recurso do módulo, o operador precisa dos recursos das regras de negócio nativas que a carga usa (por exemplo `assunto_cadastrar`, `unidade_alterar`, `usuario_cadastrar`). O módulo não concede escrita além do que o perfil do operador já permite.
 
 ### Falha em uma linha
 
@@ -296,5 +326,7 @@ Cadastra tipos de processo, com assuntos sugeridos, restrições de órgão/unid
 Validado ponta a ponta contra um ambiente de laboratório completo (SEI 5.0.5 + SIP,
 containers Docker), incluindo um ciclo de reinstalação do zero e cargas de centenas de linhas
 por operação, para exercitar tanto o caminho feliz quanto o processamento em lotes.
+
+A versão 2.0.0 (classes `MdCel`, recursos por carga, scripts de release e regra de auditoria) foi validada no mesmo ambiente, incluindo a atualização a partir da 1.0.0 com as permissões já concedidas e um perfil restrito a uma única carga no SEI. O perfil restrito não foi testado no SIP.
 
 A validação foi feita somente em MySQL. O instalador declara suporte a Oracle, SQL Server e PostgreSQL, mas esses bancos não foram testados.

@@ -1,6 +1,6 @@
 <?
 /**
- * CargaEmLoteRN
+ * MdCelSipRN
  *
  * Orquestra a leitura de arquivos .csv (mesmo layout dos exemplos de
  * github.com/pengovbr/macros-sei-sip) e chama diretamente as classes de regra de negocio
@@ -25,11 +25,20 @@
  * (reproduzido no laboratorio em 2026-09-21, no modulo SEI: e-mail invalido na carga de
  * Dados Complementares de Unidade deixava o endereco gravado e a linha marcada como "erro").
  */
-class CargaEmLoteRN extends InfraRN {
+class MdCelSipRN extends InfraRN {
 
   const STA_OK = 'OK';
   const STA_PULADO = 'PULADO';
   const STA_ERRO = 'ERRO';
+
+  // Um recurso por operacao (padrao md_<sigla>_<entidade>_<acao>): quem monta o perfil escolhe
+  // quais cargas cada operador pode rodar. As cargas combinadas da tela exigem os dois recursos.
+  // As RN do core chamadas por dentro continuam validando o recurso proprio delas
+  // (unidade_cadastrar, usuario_cadastrar etc.).
+  const RECURSO_UNIDADE = 'md_cel_unidade_cadastrar';
+  const RECURSO_HIERARQUIA = 'md_cel_hierarquia_cadastrar';
+  const RECURSO_USUARIO = 'md_cel_usuario_cadastrar';
+  const RECURSO_PERMISSAO = 'md_cel_permissao_cadastrar';
 
   // Tamanho de lote para processamento particionado (varias requisicoes HTTP curtas em vez
   // de uma unica requisicao longa) - existe porque o timeout que interrompe uma carga grande
@@ -135,7 +144,7 @@ class CargaEmLoteRN extends InfraRN {
    * "Leocadio Macambira", "Ursula Trigueirinho") em cargas de centenas de linhas.
    */
   // Despacha pela extensao do arquivo temporario (preservada no upload - ver
-  // carga_em_lote_form.php, processarUpload() com bolArquivoTemporarioIdentificado=true) -
+  // md_cel_lote.php, processarUpload() com bolArquivoTemporarioIdentificado=true) -
   // csv/xlsx/ods convergem para o mesmo formato de retorno (array de
   // array('linha'=>N,'campos'=>[...])), entao nenhum processarXxx() precisou mudar.
   private function lerCsv(string $strCaminhoArquivo): array {
@@ -231,6 +240,7 @@ class CargaEmLoteRN extends InfraRN {
    * leitura do csv/xlsx/ods).
    */
   public function processarUnidades(array $arrLinhas): array {
+    $this->validarOperacao(self::RECURSO_UNIDADE, __METHOD__, $arrLinhas);
     $arrResultado = [];
     foreach ($arrLinhas as $arrLinha) {
       try {
@@ -328,6 +338,7 @@ class CargaEmLoteRN extends InfraRN {
    * precisa vir ordenado de cima para baixo (raizes primeiro).
    */
   public function processarHierarquia(array $arrLinhas): array {
+    $this->validarOperacao(self::RECURSO_HIERARQUIA, __METHOD__, $arrLinhas);
     $arrResultado = [];
     $objSistemaSeiDTO = $this->resolverSistemaSei();
 
@@ -410,6 +421,7 @@ class CargaEmLoteRN extends InfraRN {
    * separadamente por processarPermissoes() logo abaixo.
    */
   public function processarUsuarios(array $arrLinhas): array {
+    $this->validarOperacao(self::RECURSO_USUARIO, __METHOD__, $arrLinhas);
     $arrResultado = [];
     foreach ($arrLinhas as $arrLinha) {
       try {
@@ -517,6 +529,7 @@ class CargaEmLoteRN extends InfraRN {
    * ID_TIPO_PERMISSAO_PADRAO) - o campo existe no SIP mas nao tem uso relevante para o SEI.
    */
   public function processarPermissoes(array $arrLinhas): array {
+    $this->validarOperacao(self::RECURSO_PERMISSAO, __METHOD__, $arrLinhas);
     $arrResultado = [];
     $objSistemaSeiDTO = $this->resolverSistemaSei();
 
@@ -594,6 +607,20 @@ class CargaEmLoteRN extends InfraRN {
    * em getArrObjInfraValidacao(), exposto por __toString(). Sem isso o erro apareceria na
    * linha do relatorio sem mensagem.
    */
+  /**
+   * Valida a permissao do operador para a operacao e grava a trilha de auditoria (uma por
+   * lote). Audita so a faixa de linhas: o conteudo das linhas (CPF, e-mail) nao vai para o
+   * infra_auditoria.
+   */
+  private function validarOperacao(string $strRecurso, string $strMetodo, array $arrLinhas): void {
+    $numTotal = count($arrLinhas);
+    SessaoSip::getInstance()->validarAuditarPermissao($strRecurso, $strMetodo, [
+      'linhas' => $numTotal,
+      'primeira' => $numTotal > 0 ? $arrLinhas[0]['linha'] : null,
+      'ultima' => $numTotal > 0 ? $arrLinhas[$numTotal - 1]['linha'] : null,
+    ]);
+  }
+
   private function obterMensagemErro(Exception $e): string {
     $objErro = $e->getPrevious() ?? $e;
     $strMensagem = ($objErro instanceof InfraException) ? (string)$objErro : $objErro->getMessage();

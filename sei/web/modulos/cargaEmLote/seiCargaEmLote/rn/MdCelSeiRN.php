@@ -1,6 +1,6 @@
 <?
 /**
- * CargaEmLoteRN (SEI)
+ * MdCelSeiRN (SEI)
  *
  * Orquestra a leitura de arquivos .csv/.xlsx/.ods e chama diretamente as classes de regra de
  * negocio ja existentes no SEI para as 4 operacoes deste modulo - cada uma tem sua propria
@@ -42,11 +42,19 @@
  * - Assuntos e Tipos de Processo sao CRIACAO porque nao ha replicacao equivalente de outro
  *   sistema - cada linha do csv e um registro novo (ou ja existente, a pular).
  */
-class CargaEmLoteRN extends InfraRN {
+class MdCelSeiRN extends InfraRN {
 
   const STA_OK = 'OK';
   const STA_PULADO = 'PULADO';
   const STA_ERRO = 'ERRO';
+
+  // Um recurso por operacao (padrao md_<sigla>_<entidade>_<acao>): quem monta o perfil escolhe
+  // quais cargas cada operador pode rodar. As RN do core chamadas por dentro continuam
+  // validando o recurso proprio delas (unidade_alterar, assunto_cadastrar etc.).
+  const RECURSO_UNIDADE_COMPLEMENTAR = 'md_cel_unidade_alterar';
+  const RECURSO_CONTATO_USUARIOS = 'md_cel_contato_alterar';
+  const RECURSO_ASSUNTOS = 'md_cel_assunto_cadastrar';
+  const RECURSO_TIPOS_PROCESSO = 'md_cel_tipo_procedimento_cadastrar';
 
   // Tamanho de lote para processamento particionado (varias requisicoes HTTP curtas em vez
   // de uma unica requisicao longa) - existe porque o timeout que interrompe uma carga grande
@@ -184,7 +192,7 @@ class CargaEmLoteRN extends InfraRN {
   // ---------------------------------------------------------------------
 
   // Despacha pela extensao do arquivo temporario (preservada no upload - ver
-  // carga_em_lote_form.php, processarUpload() com bolArquivoTemporarioIdentificado=true) -
+  // md_cel_lote.php, processarUpload() com bolArquivoTemporarioIdentificado=true) -
   // csv/xlsx/ods convergem para o mesmo formato de retorno (array de
   // array('linha'=>N,'campos'=>[...])), entao nenhum processarXxx() precisou mudar.
   private function lerCsv(string $strCaminhoArquivo): array {
@@ -261,6 +269,19 @@ class CargaEmLoteRN extends InfraRN {
   }
 
   /**
+   * Valida a permissao do operador para a operacao e grava a trilha de auditoria (uma por
+   * lote). Audita so o que identifica o lote (arquivo, faixa de linhas): o conteudo das linhas
+   * (CPF, e-mail, telefone) nao vai para o infra_auditoria.
+   */
+  private function validarOperacao(string $strRecurso, string $strMetodo, array $arrParametros): void {
+    SessaoSEI::getInstance()->validarAuditarPermissao($strRecurso, $strMetodo, [
+      'arquivo' => basename($arrParametros['csv']),
+      'offset' => $arrParametros['offset'] ?? 0,
+      'limite' => $arrParametros['limite'] ?? null,
+    ]);
+  }
+
+  /**
    * Limite de tamanho do arquivo enviado, em Mb: o mesmo parametro que o SEI usa para
    * documento externo (SEI_TAM_MB_DOC_EXTERNO). PaginaSEI::processarUpload() so confere a
    * extensao e os limites do PHP, entao a tela consulta este valor para recusar o arquivo
@@ -278,7 +299,7 @@ class CargaEmLoteRN extends InfraRN {
   // Le o arquivo inteiro (csv/xlsx/ods) e devolve so a fatia [offset, offset+limite) junto
   // com o total de linhas de dado do arquivo inteiro - usado por todo processarXxx()
   // pra suportar processamento particionado em lotes (ver TAMANHO_LOTE acima e
-  // carga_em_lote_form.php, que controla o laco de recarregamentos automaticos). Reler o
+  // md_cel_lote.php, que controla o laco de recarregamentos automaticos). Reler o
   // arquivo inteiro a cada lote e barato (poucos milhares de linhas, no maximo) perto do
   // custo real, que e a gravacao no banco por linha.
   private function lerLote(string $strCaminhoArquivo, int $numOffset, ?int $numLimite): array {
@@ -305,6 +326,7 @@ class CargaEmLoteRN extends InfraRN {
    * lista de e-mails com a existente (nunca substitui a lista inteira, so acrescenta).
    */
   public function processarUnidadesComplementar(array $arrParametros): array {
+    $this->validarOperacao(self::RECURSO_UNIDADE_COMPLEMENTAR, __METHOD__, $arrParametros);
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
     $arrResultado = [];
@@ -480,6 +502,7 @@ class CargaEmLoteRN extends InfraRN {
    * mesclagem de array - so o padrao geral de "campo vazio no csv preserva o valor atual".
    */
   public function processarContatoUsuarios(array $arrParametros): array {
+    $this->validarOperacao(self::RECURSO_CONTATO_USUARIOS, __METHOD__, $arrParametros);
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
     $arrResultado = [];
@@ -767,6 +790,7 @@ class CargaEmLoteRN extends InfraRN {
    * pra quem esta preparando uma tabela nova, ainda nao promovida a atual.
    */
   public function processarAssuntos(array $arrParametros): array {
+    $this->validarOperacao(self::RECURSO_ASSUNTOS, __METHOD__, $arrParametros);
     $strCaminhoArquivo = $arrParametros['csv'];
     $strNomeTabela = $arrParametros['nomeTabela'] ?? null;
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
@@ -946,6 +970,7 @@ class CargaEmLoteRN extends InfraRN {
    * caso.
    */
   public function processarTiposProcesso(array $arrParametros): array {
+    $this->validarOperacao(self::RECURSO_TIPOS_PROCESSO, __METHOD__, $arrParametros);
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
     $arrResultado = [];

@@ -10,7 +10,7 @@ Instrucoes para instalacao do modulo Carga em Lote (SEI)
              /* ... outras chaves ... */
 
             'Modulos' => array(
-                 'SeiCargaEmLoteIntegracao' => 'cargaEmLote/seiCargaEmLote'
+                 'MdCelSeiIntegracao' => 'cargaEmLote/seiCargaEmLote'
                  )
          ),
 
@@ -22,33 +22,45 @@ Instrucoes para instalacao do modulo Carga em Lote (SEI)
 5 - o icone do modulo (carga.svg) ja vem dentro da propria pasta do modulo
     (web/modulos/cargaEmLote/seiCargaEmLote/menu/carga.svg) - diferente do modulo SIP, o SEI
     permite que cada modulo declare seu proprio diretorio de icones
-    (SeiCargaEmLoteIntegracao::obterDiretorioIconesMenu()), entao nao e preciso copiar nada
+    (MdCelSeiIntegracao::obterDiretorioIconesMenu()), entao nao e preciso copiar nada
     para fora da pasta do modulo.
 
-6 - rodar o script de instalacao, que cria (se ainda nao existirem) o recurso
-    md_carga_em_lote_sei, o perfil "Carga em Lote (SEI)" e o item de menu, e ja atribui o
-    recurso e o item de menu ao perfil. Recurso/perfil/menu de telas do SEI sao geridos nas
-    mesmas tabelas do SIP (por isso o script se conecta ao banco do SIP, nao ao do SEI) -
-    mesmo mecanismo (InfraScriptVersao + ScriptSip) usado pelo modulo SIP e pelo proprio
-    script oficial do TRF4 (sip/scripts/atualizar_recursos_sei.php). Idempotente, seguro
-    reexecutar. Precisa ser rodado via linha de comando dentro do container (pede
-    usuario/senha do banco SIP interativamente):
+6 - rodar os scripts de release do pacote (Carga em Lote e um pacote so, com um modulo para
+    cada sistema; os dois scripts servem aos dois modulos). Rodam via linha de comando dentro
+    do container e pedem usuario/senha do banco interativamente. A ordem importa: primeiro o
+    do SEI, depois o do SIP.
 
-    docker exec -it httpd php /opt/sei/web/modulos/cargaEmLote/seiCargaEmLote/scripts/instalar.php
+    docker exec -it httpd php /opt/sei/scripts/sei_atualizar_versao_modulo_cel.php
+    docker exec -it httpd php /opt/sip/scripts/sip_atualizar_versao_modulo_cel.php
 
-7 - atribuir o perfil "Carga em Lote (SEI)" (criado pelo passo 6) a quem for operar as cargas
-    (SIP > Perfis > Montar, escolhendo o Sistema "SEI") - unico passo que continua manual,
-    pois depende de decisao de quem tera acesso em cada instalacao.
+    O do SEI so registra a versao (MD_CEL_VERSAO), porque o modulo nao tem tabelas. O do SIP
+    cria, nos sistemas SEI e SIP, o perfil MD_CEL, a tela (md_cel_lote), o item de menu, um
+    recurso por carga e a regra de auditoria MD_CEL. Idempotente, seguro reexecutar. Se a
+    versao 1.0.0 (instalador antigo, scripts/instalar.php) estiver instalada, o script do SIP
+    renomeia o perfil e o recurso antigos em vez de recriar, e as permissoes ja concedidas
+    continuam valendo.
+
+7 - atribuir o perfil MD_CEL (sistema SEI) a quem for operar as cargas do SEI (SIP > Perfis >
+    Montar, escolhendo o Sistema "SEI"). O perfil traz todas as cargas. Para liberar so
+    algumas, crie outro perfil com o recurso da tela (md_cel_lote) e so os recursos das
+    cargas desejadas:
+
+      md_cel_unidade_alterar               Dados Complementares de Unidade
+      md_cel_contato_alterar               Contato de Usuarios
+      md_cel_assunto_cadastrar             Assuntos
+      md_cel_tipo_procedimento_cadastrar   Tipos de Processo
+
+    A tela mostra so as cargas que o perfil do operador permite, e cada chamada valida o
+    recurso de novo e grava a trilha de auditoria (arquivo e faixa de linhas, nunca o conteudo
+    das linhas). Alem do recurso do modulo, o operador precisa dos recursos das RN do SEI que a
+    carga usa (por exemplo unidade_alterar, contato_alterar, assunto_cadastrar,
+    tipo_procedimento_cadastrar): o modulo nao concede escrita alem do perfil do operador.
 
     Importante: quem receber o perfil precisa fazer logout/login de novo (ou aguardar a
     sessao expirar) para o item de menu aparecer - o menu de cada sistema e montado uma
     unica vez no login e fica guardado na sessao, sem recarregar sozinho quando uma nova
     permissao e concedida no meio de uma sessao ja aberta (comportamento generico do
     framework, nao peculiaridade deste modulo).
-
-Pre-requisito das operacoes de Unidade/Usuario: a unidade/usuario ja precisa existir no SEI
-(com um Contato vinculado) antes de rodar a carga - normalmente ja e o caso, ja que criar
-pelo modulo SIP (Sprint 1) ja cria o Contato correspondente via replicacao SIP->SEI.
 
 Formatos de arquivo aceitos no upload: .csv, .xlsx e .ods (a tela detecta pela extensao do
 arquivo enviado e usa o leitor certo - PHPExcel, ja vendorizado no proprio framework em
@@ -60,14 +72,14 @@ conteudo nos 3 formatos ficam em exemplos/, dentro da pasta deste modulo:
         exemploAssuntos.{csv,xlsx,ods}             (Assuntos)
         exemploTiposDeProcesso.{csv,xlsx,ods}      (Tipos de Processo)
 
-Processamento em lotes (arquivos grandes): a tela processa CargaEmLoteRN::TAMANHO_LOTE linhas
+Processamento em lotes (arquivos grandes): a tela processa MdCelSeiRN::TAMANHO_LOTE linhas
 por vez (50 por padrao) e se recarrega sozinha automaticamente ate concluir, mostrando o
 progresso ("X de Y linhas processadas") a cada recarregamento. Existe porque o timeout que
 interrompe uma carga grande normalmente NAO e do PHP (o modulo nao controla isso - so
 acrescenta arquivos a uma instalacao SEI ja existente) e sim do servidor web/proxy na frente
 dele, fora do alcance do modulo. Se a instalacao real tiver um timeout mais agressivo (comum
 atras de proxy reverso/balanceador corporativo) e uma carga ainda assim estourar, reduza a
-constante TAMANHO_LOTE no topo de rn/CargaEmLoteRN.php (calibrado neste laboratorio: ~2,1s por
+constante TAMANHO_LOTE no topo de rn/MdCelSeiRN.php (calibrado neste laboratorio: ~2,1s por
 linha processada, 50 linhas ficam em ~105s - ajuste a conta pro teto real da instalacao, com
 margem de seguranca). O estado do processamento (arquivo, quantas linhas ja foram feitas,
 relatorio acumulado) fica na sessao do navegador do usuario, nao em banco - some sozinho se o
