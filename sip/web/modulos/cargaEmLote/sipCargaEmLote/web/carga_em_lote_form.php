@@ -242,7 +242,7 @@ PaginaSip::getInstance()->abrirBody($strTitulo);
     quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento é
     feito em lotes de <?=CargaEmLoteRN::TAMANHO_LOTE?> - esta tela se atualizará
     periodicamente com o progresso, sozinha, até concluir. Não feche nem atualize a
-    janela manualmente enquanto isso.</p>
+    janela manualmente enquanto isso. Tamanho máximo do arquivo: <?=ini_get('upload_max_filesize')?> (limite do PHP; o SIP não tem parâmetro próprio para isso).</p>
     </div>
 
     <?

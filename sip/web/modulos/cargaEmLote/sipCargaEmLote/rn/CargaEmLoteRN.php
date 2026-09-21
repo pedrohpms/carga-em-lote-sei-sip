@@ -7,18 +7,23 @@
  * ja existentes no SIP (UnidadeRN, RelHierarquiaUnidadeRN, UsuarioRN, PermissaoRN) para
  * cadastrar unidades, hierarquia, usuarios e primeiras permissoes em lote.
  *
- * Segue o padrao InfraRN (metodo *Controlado = uma transacao). Dentro de cada metodo, cada
- * linha do csv e processada com try/catch proprio: uma linha com erro NAO interrompe as
- * demais nem reverte o que ja foi gravado, e fica registrada no relatorio de retorno como
- * "erro". Registros ja existentes sao pulados (nunca sobrescritos), verificados com o mesmo
- * padrao de pre-checagem (contar/consultar) que as proprias *RN ja usam internamente.
+ * Segue o padrao InfraRN (metodo *Controlado = uma transacao). Registros ja existentes sao
+ * pulados (nunca sobrescritos), verificados com o mesmo padrao de pre-checagem
+ * (contar/consultar) que as proprias *RN ja usam internamente. O resultado de cada linha
+ * (OK, pulado ou erro) volta no relatorio da tela.
  *
- * Nota tecnica: como o controle de conexao/transacao do InfraRN e compartilhado por classe
- * estatica, chamar UnidadeRN/UsuarioRN/etc. de dentro de um metodo *Controlado desta classe
- * reaproveita a mesma transacao aberta aqui - cada linha do csv vira uma transacao nativa
- * completa (abertura+commit), igual ao que a tela nativa faria uma linha de cada vez.
- * Validado contra o container real em varias rodadas (incluindo cargas de 200 linhas em
- * lotes de 50), sem sinal de conflito de transacao.
+ * Transacao por linha: as operacoes publicas (processarX) NAO abrem transacao. Cada uma percorre
+ * as linhas do lote e chama processarXLinha(), que o InfraRN::__call() despacha para
+ * processarXLinhaControlado(), dentro de uma transacao propria. O try/catch fica por fora
+ * dela: a linha com erro faz rollback so de si mesma, entra no relatorio como "erro" e nao
+ * interrompe as demais.
+ *
+ * Por que nao uma transacao para o lote inteiro: o InfraRN::__call() so abre transacao se o
+ * banco ainda nao esta em uma, e so quem abriu confirma ou cancela. Com o lote inteiro numa
+ * transacao, as RN do core chamadas por dentro entram nela, e o catch por linha engole o erro
+ * sem rollback. A linha que falha depois de gravar algo deixa esse resultado parcial no banco
+ * (reproduzido no laboratorio em 2026-09-21, no modulo SEI: e-mail invalido na carga de
+ * Dados Complementares de Unidade deixava o endereco gravado e a linha marcada como "erro").
  */
 class CargaEmLoteRN extends InfraRN {
 
@@ -132,7 +137,7 @@ class CargaEmLoteRN extends InfraRN {
   // Despacha pela extensao do arquivo temporario (preservada no upload - ver
   // carga_em_lote_form.php, processarUpload() com bolArquivoTemporarioIdentificado=true) -
   // csv/xlsx/ods convergem para o mesmo formato de retorno (array de
-  // array('linha'=>N,'campos'=>[...])), entao nenhum processarXxxControlado() precisou mudar.
+  // array('linha'=>N,'campos'=>[...])), entao nenhum processarXxx() precisou mudar.
   private function lerCsv(string $strCaminhoArquivo): array {
     $strExtensao = strtolower(pathinfo($strCaminhoArquivo, PATHINFO_EXTENSION));
     switch ($strExtensao) {
@@ -218,51 +223,55 @@ class CargaEmLoteRN extends InfraRN {
   /**
    * Cadastra unidades (operacao de CRIACAO): uma linha por unidade, pula (STA_PULADO) se a
    * sigla ja existir no orgao, cadastra (STA_OK) caso contrario. Nao mexe em hierarquia -
-   * isso e responsabilidade de processarHierarquiaControlado() logo abaixo.
+   * isso e responsabilidade de processarHierarquia() logo abaixo.
    *
    * Recebe as linhas ja lidas (e, quando chamado em lote, ja fatiadas) - quem le o
    * arquivo e fatia por offset/limite e o metodo combinado que chama este (mesmo arquivo e
    * relido uma vez por lote, mas isso e barato - o que demora e a gravacao no banco, nao a
    * leitura do csv/xlsx/ods).
    */
-  protected function processarUnidadesControlado(array $arrLinhas): array {
-    $arrResultado = array();
+  public function processarUnidades(array $arrLinhas): array {
+    $arrResultado = [];
     foreach ($arrLinhas as $arrLinha) {
-      $numLinha = $arrLinha['linha'];
-      $c = $arrLinha['campos'];
       try {
-        $strSiglaOrgao = $c[1] ?? '';
-        $strSigla = $c[2] ?? '';
-        $strDescricao = $c[3] ?? '';
-
-        if ($strSiglaOrgao === '' || $strSigla === '' || $strDescricao === '') {
-          throw new InfraException('Linha incompleta (órgão/sigla/descrição obrigatórios).');
-        }
-
-        $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
-
-        if ($this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSigla) !== null) {
-          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Unidade "' . $strSigla . '" já existe.');
-          continue;
-        }
-
-        $objUnidadeDTO = new UnidadeDTO();
-        $objUnidadeDTO->setNumIdOrgao($objOrgaoDTO->getNumIdOrgao());
-        $objUnidadeDTO->setStrIdOrigem('');
-        $objUnidadeDTO->setStrSigla($strSigla);
-        $objUnidadeDTO->setStrDescricao($strDescricao);
-        $objUnidadeDTO->setStrSinGlobal('N');
-        $objUnidadeDTO->setStrSinAtivo('S');
-
-        $objUnidadeRN = new UnidadeRN();
-        $objUnidadeRN->cadastrar($objUnidadeDTO);
-
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_OK, 'Unidade "' . $strSigla . '" cadastrada.');
+        $arrResultado[] = $this->processarUnidadesLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos']]);
       } catch (Exception $e) {
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_ERRO, $this->obterMensagemErro($e));
+        $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
       }
     }
     return $arrResultado;
+  }
+
+  /** Uma linha de processarUnidades(), em transacao propria (ver docblock da classe). */
+  protected function processarUnidadesLinhaControlado(array $arrParametros): array {
+    $numLinha = $arrParametros['linha'];
+    $c = $arrParametros['campos'];
+    $strSiglaOrgao = $c[1] ?? '';
+    $strSigla = $c[2] ?? '';
+    $strDescricao = $c[3] ?? '';
+
+    if ($strSiglaOrgao === '' || $strSigla === '' || $strDescricao === '') {
+      throw new InfraException('Linha incompleta (órgão/sigla/descrição obrigatórios).');
+    }
+
+    $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
+
+    if ($this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSigla) !== null) {
+      return $this->linhaResultado($numLinha, self::STA_PULADO, 'Unidade "' . $strSigla . '" já existe.');
+    }
+
+    $objUnidadeDTO = new UnidadeDTO();
+    $objUnidadeDTO->setNumIdOrgao($objOrgaoDTO->getNumIdOrgao());
+    $objUnidadeDTO->setStrIdOrigem('');
+    $objUnidadeDTO->setStrSigla($strSigla);
+    $objUnidadeDTO->setStrDescricao($strDescricao);
+    $objUnidadeDTO->setStrSinGlobal('N');
+    $objUnidadeDTO->setStrSinAtivo('S');
+
+    $objUnidadeRN = new UnidadeRN();
+    $objUnidadeRN->cadastrar($objUnidadeDTO);
+
+    return $this->linhaResultado($numLinha, self::STA_OK, 'Unidade "' . $strSigla . '" cadastrada.');
   }
 
   /**
@@ -270,8 +279,8 @@ class CargaEmLoteRN extends InfraRN {
    * .csv, cadastra as unidades e ja posiciona na hierarquia numa unica passada, sem precisar
    * de dois uploads.
    *
-   * Ponto de entrada publico (chamado pela tela via InfraRN::__call - por isso um unico
-   * parametro, empacotado num array): 'csv' (obrigatorio), 'offset'/'limite' (opcionais -
+   * Ponto de entrada publico (chamado pela tela; um unico parametro, empacotado num array,
+   * como nos demais): 'csv' (obrigatorio), 'offset'/'limite' (opcionais -
    * processamento particionado em lotes, usado pela tela pra nao estourar o timeout do
    * servidor web numa carga grande; omitidos = processa o arquivo inteiro de uma vez, mesmo
    * comportamento de antes). Retorna 'resultado' (relatorio linha a linha do lote),
@@ -279,7 +288,7 @@ class CargaEmLoteRN extends InfraRN {
    * cobriu) - a tela soma 'processadas' ao offset pra saber onde continuar no proximo
    * recarregamento automatico.
    */
-  protected function processarUnidadesEHierarquiaControlado(array $arrParametros): array {
+  public function processarUnidadesEHierarquia(array $arrParametros): array {
     $strCaminhoArquivo = $arrParametros['csv'];
     $numOffset = $arrParametros['offset'] ?? 0;
     $numLimite = $arrParametros['limite'] ?? null;
@@ -288,8 +297,8 @@ class CargaEmLoteRN extends InfraRN {
     $numTotal = count($arrTodasLinhas);
     $arrLote = ($numLimite === null) ? array_slice($arrTodasLinhas, $numOffset) : array_slice($arrTodasLinhas, $numOffset, $numLimite);
 
-    $arrResultadoUnidades = $this->processarUnidadesControlado($arrLote);
-    $arrResultadoHierarquia = $this->processarHierarquiaControlado($arrLote);
+    $arrResultadoUnidades = $this->processarUnidades($arrLote);
+    $arrResultadoHierarquia = $this->processarHierarquia($arrLote);
     $arrResultado = array_merge($arrResultadoUnidades, $arrResultadoHierarquia);
 
     return array(
@@ -313,137 +322,146 @@ class CargaEmLoteRN extends InfraRN {
 
   /**
    * Posiciona unidades ja existentes na hierarquia "SEI" do SIP (operacao de CRIACAO do
-   * vinculo, nao da unidade em si - ver processarUnidadesControlado() acima). Pula
+   * vinculo, nao da unidade em si - ver processarUnidades() acima). Pula
    * (STA_PULADO) se o vinculo ja existir, cadastra (STA_OK) caso contrario. Da erro se a
    * unidade informada na coluna "superior" ainda nao estiver na hierarquia - por isso o csv
    * precisa vir ordenado de cima para baixo (raizes primeiro).
    */
-  protected function processarHierarquiaControlado(array $arrLinhas): array {
-    $arrResultado = array();
+  public function processarHierarquia(array $arrLinhas): array {
+    $arrResultado = [];
     $objSistemaSeiDTO = $this->resolverSistemaSei();
-    $numIdHierarquia = $objSistemaSeiDTO->getNumIdHierarquia();
 
     foreach ($arrLinhas as $arrLinha) {
-      $numLinha = $arrLinha['linha'];
-      $c = $arrLinha['campos'];
       try {
-        $strSiglaOrgao = $c[1] ?? '';
-        $strSigla = $c[2] ?? '';
-        $strSuperior = $c[4] ?? '';
-
-        if ($strSiglaOrgao === '' || $strSigla === '') {
-          throw new InfraException('Linha incompleta (órgão/sigla obrigatórios).');
-        }
-
-        $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
-        $objUnidadeDTO = $this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSigla);
-        if ($objUnidadeDTO === null) {
-          throw new InfraException('Unidade "' . $strSigla . '" não encontrada (rode a carga de unidades antes).');
-        }
-
-        $numIdUnidadePai = null;
-        if ($strSuperior !== '') {
-          $objUnidadePaiDTO = $this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSuperior);
-          if ($objUnidadePaiDTO === null) {
-            throw new InfraException('Unidade superior "' . $strSuperior . '" ainda não está na hierarquia (processe as linhas de cima para baixo).');
-          }
-          $numIdUnidadePai = $objUnidadePaiDTO->getNumIdUnidade();
-        }
-
-        $dtoConsulta = new RelHierarquiaUnidadeDTO();
-        $dtoConsulta->setNumIdHierarquia($numIdHierarquia);
-        $dtoConsulta->setNumIdUnidade($objUnidadeDTO->getNumIdUnidade());
-        $dtoConsulta->setBolExclusaoLogica(false);
-        $dtoConsulta->retTodos();
-        $objRelRN = new RelHierarquiaUnidadeRN();
-        if ($objRelRN->consultar($dtoConsulta) !== null) {
-          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Unidade "' . $strSigla . '" já consta na hierarquia.');
-          continue;
-        }
-
-        $objRelDTO = new RelHierarquiaUnidadeDTO();
-        $objRelDTO->setNumIdHierarquia($numIdHierarquia);
-        $objRelDTO->setNumIdUnidade($objUnidadeDTO->getNumIdUnidade());
-        $objRelDTO->setNumIdUnidadePai($numIdUnidadePai);
-        // IdHierarquiaPai e um campo separado de IdHierarquia (visto em
-        // rel_hierarquia_unidade_cadastro.php) - mesma hierarquia quando ha pai, null se raiz.
-        $objRelDTO->setNumIdHierarquiaPai($numIdUnidadePai !== null ? $numIdHierarquia : null);
-        $objRelDTO->setStrSinAtivo('S');
-        $objRelDTO->setDtaDataInicio(date('d/m/Y'));
-        $objRelDTO->setDtaDataFim(''); // sempre setado (mesmo vazio), ver nota da Acao Usuarios
-
-        $objRelRN->cadastrar($objRelDTO);
-
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_OK, 'Unidade "' . $strSigla . '" posicionada na hierarquia.');
+        $arrResultado[] = $this->processarHierarquiaLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos'], 'sistema' => $objSistemaSeiDTO]);
       } catch (Exception $e) {
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_ERRO, $this->obterMensagemErro($e));
+        $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
       }
     }
     return $arrResultado;
+  }
+
+  /** Uma linha de processarHierarquia(), em transacao propria (ver docblock da classe). */
+  protected function processarHierarquiaLinhaControlado(array $arrParametros): array {
+    $numLinha = $arrParametros['linha'];
+    $c = $arrParametros['campos'];
+    $objSistemaSeiDTO = $arrParametros['sistema'];
+    $numIdHierarquia = $objSistemaSeiDTO->getNumIdHierarquia();
+    $strSiglaOrgao = $c[1] ?? '';
+    $strSigla = $c[2] ?? '';
+    $strSuperior = $c[4] ?? '';
+
+    if ($strSiglaOrgao === '' || $strSigla === '') {
+      throw new InfraException('Linha incompleta (órgão/sigla obrigatórios).');
+    }
+
+    $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
+    $objUnidadeDTO = $this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSigla);
+    if ($objUnidadeDTO === null) {
+      throw new InfraException('Unidade "' . $strSigla . '" não encontrada (rode a carga de unidades antes).');
+    }
+
+    $numIdUnidadePai = null;
+    if ($strSuperior !== '') {
+      $objUnidadePaiDTO = $this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSuperior);
+      if ($objUnidadePaiDTO === null) {
+        throw new InfraException('Unidade superior "' . $strSuperior . '" ainda não está na hierarquia (processe as linhas de cima para baixo).');
+      }
+      $numIdUnidadePai = $objUnidadePaiDTO->getNumIdUnidade();
+    }
+
+    $dtoConsulta = new RelHierarquiaUnidadeDTO();
+    $dtoConsulta->setNumIdHierarquia($numIdHierarquia);
+    $dtoConsulta->setNumIdUnidade($objUnidadeDTO->getNumIdUnidade());
+    $dtoConsulta->setBolExclusaoLogica(false);
+    $dtoConsulta->retTodos();
+    $objRelRN = new RelHierarquiaUnidadeRN();
+    if ($objRelRN->consultar($dtoConsulta) !== null) {
+      return $this->linhaResultado($numLinha, self::STA_PULADO, 'Unidade "' . $strSigla . '" já consta na hierarquia.');
+    }
+
+    $objRelDTO = new RelHierarquiaUnidadeDTO();
+    $objRelDTO->setNumIdHierarquia($numIdHierarquia);
+    $objRelDTO->setNumIdUnidade($objUnidadeDTO->getNumIdUnidade());
+    $objRelDTO->setNumIdUnidadePai($numIdUnidadePai);
+    // IdHierarquiaPai e um campo separado de IdHierarquia (visto em
+    // rel_hierarquia_unidade_cadastro.php) - mesma hierarquia quando ha pai, null se raiz.
+    $objRelDTO->setNumIdHierarquiaPai($numIdUnidadePai !== null ? $numIdHierarquia : null);
+    $objRelDTO->setStrSinAtivo('S');
+    $objRelDTO->setDtaDataInicio(date('d/m/Y'));
+    $objRelDTO->setDtaDataFim(''); // sempre setado (mesmo vazio), ver nota da Acao Usuarios
+
+    $objRelRN->cadastrar($objRelDTO);
+
+    return $this->linhaResultado($numLinha, self::STA_OK, 'Unidade "' . $strSigla . '" posicionada na hierarquia.');
   }
 
   // ---------------------------------------------------------------------
   // 3. cargaUsuarios
   // Colunas (README): 0-Index,1-Orgao,2-Sigla,3-Nome,4-NomeSocial,5-CPF,6-E-mail,
   //                    7-unidadePrimeiraPermissao,8-perfilPrimeiraPermissao
-  // Cadastra so o usuario (sem a permissao - ver processarPermissoesControlado).
+  // Cadastra so o usuario (sem a permissao - ver processarPermissoes).
   // ---------------------------------------------------------------------
 
   /**
    * Cadastra usuarios (operacao de CRIACAO): uma linha por usuario, pula (STA_PULADO) se a
    * sigla ja existir no orgao, cadastra (STA_OK) caso contrario. So cadastra o usuario -
    * a primeira permissao (necessaria pra ele conseguir acessar o SEI) e concedida
-   * separadamente por processarPermissoesControlado() logo abaixo.
+   * separadamente por processarPermissoes() logo abaixo.
    */
-  protected function processarUsuariosControlado(array $arrLinhas): array {
-    $arrResultado = array();
+  public function processarUsuarios(array $arrLinhas): array {
+    $arrResultado = [];
     foreach ($arrLinhas as $arrLinha) {
-      $numLinha = $arrLinha['linha'];
-      $c = $arrLinha['campos'];
       try {
-        $strSiglaOrgao = $c[1] ?? '';
-        $strSigla = $c[2] ?? '';
-        $strNome = $c[3] ?? '';
-        $strNomeSocial = $c[4] ?? '';
-        $strCpf = $c[5] ?? '';
-        $strEmail = $c[6] ?? '';
-
-        if ($strSiglaOrgao === '' || $strSigla === '' || $strNome === '') {
-          throw new InfraException('Linha incompleta (órgão/sigla/nome obrigatórios).');
-        }
-
-        $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
-
-        if ($this->resolverUsuario($objOrgaoDTO->getNumIdOrgao(), $strSigla) !== null) {
-          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Usuário "' . $strSigla . '" já existe.');
-          continue;
-        }
-
-        // "Atributo [X] nao recebeu valor" (visto na carga de unidades e de novo aqui com
-        // IdUsuario) acontece quando algum codigo interno chama um getter de um atributo que
-        // nunca foi setado (InfraDTO.php:1375) - nao e regra generica de cadastrar(), e
-        // especifico de cada *RN/*BD internamente. Seguindo o mesmo padrao de
-        // usuario_cadastro.php, que sempre seta todos os campos, inclusive a PK como null.
-        $objUsuarioDTO = new UsuarioDTO();
-        $objUsuarioDTO->setNumIdUsuario(null);
-        $objUsuarioDTO->setNumIdOrgao($objOrgaoDTO->getNumIdOrgao());
-        $objUsuarioDTO->setStrIdOrigem('');
-        $objUsuarioDTO->setStrSigla($strSigla);
-        $objUsuarioDTO->setStrNome($strNome);
-        $objUsuarioDTO->setStrNomeSocial($strNomeSocial);
-        $objUsuarioDTO->setDblCpf($strCpf !== '' ? InfraUtil::formatarCpf($strCpf) : '');
-        $objUsuarioDTO->setStrEmail($strEmail);
-        $objUsuarioDTO->setStrSinAtivo('S');
-
-        $objUsuarioRN = new UsuarioRN();
-        $objUsuarioRN->cadastrar($objUsuarioDTO);
-
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_OK, 'Usuário "' . $strSigla . '" cadastrado.');
+        $arrResultado[] = $this->processarUsuariosLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos']]);
       } catch (Exception $e) {
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_ERRO, $this->obterMensagemErro($e));
+        $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
       }
     }
     return $arrResultado;
+  }
+
+  /** Uma linha de processarUsuarios(), em transacao propria (ver docblock da classe). */
+  protected function processarUsuariosLinhaControlado(array $arrParametros): array {
+    $numLinha = $arrParametros['linha'];
+    $c = $arrParametros['campos'];
+    $strSiglaOrgao = $c[1] ?? '';
+    $strSigla = $c[2] ?? '';
+    $strNome = $c[3] ?? '';
+    $strNomeSocial = $c[4] ?? '';
+    $strCpf = $c[5] ?? '';
+    $strEmail = $c[6] ?? '';
+
+    if ($strSiglaOrgao === '' || $strSigla === '' || $strNome === '') {
+      throw new InfraException('Linha incompleta (órgão/sigla/nome obrigatórios).');
+    }
+
+    $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
+
+    if ($this->resolverUsuario($objOrgaoDTO->getNumIdOrgao(), $strSigla) !== null) {
+      return $this->linhaResultado($numLinha, self::STA_PULADO, 'Usuário "' . $strSigla . '" já existe.');
+    }
+
+    // "Atributo [X] nao recebeu valor" (visto na carga de unidades e de novo aqui com
+    // IdUsuario) acontece quando algum codigo interno chama um getter de um atributo que
+    // nunca foi setado (InfraDTO.php:1375) - nao e regra generica de cadastrar(), e
+    // especifico de cada *RN/*BD internamente. Seguindo o mesmo padrao de
+    // usuario_cadastro.php, que sempre seta todos os campos, inclusive a PK como null.
+    $objUsuarioDTO = new UsuarioDTO();
+    $objUsuarioDTO->setNumIdUsuario(null);
+    $objUsuarioDTO->setNumIdOrgao($objOrgaoDTO->getNumIdOrgao());
+    $objUsuarioDTO->setStrIdOrigem('');
+    $objUsuarioDTO->setStrSigla($strSigla);
+    $objUsuarioDTO->setStrNome($strNome);
+    $objUsuarioDTO->setStrNomeSocial($strNomeSocial);
+    $objUsuarioDTO->setDblCpf($strCpf !== '' ? InfraUtil::formatarCpf($strCpf) : '');
+    $objUsuarioDTO->setStrEmail($strEmail);
+    $objUsuarioDTO->setStrSinAtivo('S');
+
+    $objUsuarioRN = new UsuarioRN();
+    $objUsuarioRN->cadastrar($objUsuarioDTO);
+
+    return $this->linhaResultado($numLinha, self::STA_OK, 'Usuário "' . $strSigla . '" cadastrado.');
   }
 
   /**
@@ -452,10 +470,10 @@ class CargaEmLoteRN extends InfraRN {
    * unidadePrimeiraPermissao/perfilPrimeiraPermissao), entao cadastra o usuario e ja concede
    * a primeira permissao numa unica passada, sem precisar de dois uploads.
    *
-   * Mesmo contrato de parametros/retorno de processarUnidadesEHierarquiaControlado() (ver
+   * Mesmo contrato de parametros/retorno de processarUnidadesEHierarquia() (ver
    * comentario la) - processamento particionado em lotes via 'offset'/'limite'.
    */
-  protected function processarUsuariosEPermissoesControlado(array $arrParametros): array {
+  public function processarUsuariosEPermissoes(array $arrParametros): array {
     $strCaminhoArquivo = $arrParametros['csv'];
     $numOffset = $arrParametros['offset'] ?? 0;
     $numLimite = $arrParametros['limite'] ?? null;
@@ -464,8 +482,8 @@ class CargaEmLoteRN extends InfraRN {
     $numTotal = count($arrTodasLinhas);
     $arrLote = ($numLimite === null) ? array_slice($arrTodasLinhas, $numOffset) : array_slice($arrTodasLinhas, $numOffset, $numLimite);
 
-    $arrResultadoUsuarios = $this->processarUsuariosControlado($arrLote);
-    $arrResultadoPermissoes = $this->processarPermissoesControlado($arrLote);
+    $arrResultadoUsuarios = $this->processarUsuarios($arrLote);
+    $arrResultadoPermissoes = $this->processarPermissoes($arrLote);
     $arrResultado = array_merge($arrResultadoUsuarios, $arrResultadoPermissoes);
 
     return array(
@@ -493,84 +511,93 @@ class CargaEmLoteRN extends InfraRN {
 
   /**
    * Concede a um usuario ja existente um perfil numa unidade (operacao de CRIACAO da
-   * permissao, nao do usuario - ver processarUsuariosControlado() acima). Pula
+   * permissao, nao do usuario - ver processarUsuarios() acima). Pula
    * (STA_PULADO) se o usuario ja possuir aquele perfil naquela unidade, cadastra (STA_OK)
    * caso contrario. Tipo de permissao sempre "Nao Delegavel" (ver constante
    * ID_TIPO_PERMISSAO_PADRAO) - o campo existe no SIP mas nao tem uso relevante para o SEI.
    */
-  protected function processarPermissoesControlado(array $arrLinhas): array {
-    $arrResultado = array();
+  public function processarPermissoes(array $arrLinhas): array {
+    $arrResultado = [];
     $objSistemaSeiDTO = $this->resolverSistemaSei();
 
     foreach ($arrLinhas as $arrLinha) {
-      $numLinha = $arrLinha['linha'];
-      $c = $arrLinha['campos'];
       try {
-        $strSiglaOrgao = $c[1] ?? '';
-        $strSiglaUsuario = $c[2] ?? '';
-        $strSiglaUnidade = $c[7] ?? '';
-        $strNomePerfil = $c[8] ?? '';
-
-        if ($strSiglaOrgao === '' || $strSiglaUsuario === '' || $strSiglaUnidade === '' || $strNomePerfil === '') {
-          throw new InfraException('Linha incompleta (órgão/usuário/unidade/perfil obrigatórios).');
-        }
-
-        $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
-
-        $objUsuarioDTO = $this->resolverUsuario($objOrgaoDTO->getNumIdOrgao(), $strSiglaUsuario);
-        if ($objUsuarioDTO === null) {
-          throw new InfraException('Usuário "' . $strSiglaUsuario . '" não encontrado (rode a carga de usuários antes).');
-        }
-
-        $objUnidadeDTO = $this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSiglaUnidade);
-        if ($objUnidadeDTO === null) {
-          throw new InfraException('Unidade "' . $strSiglaUnidade . '" não encontrada.');
-        }
-
-        $objPerfilDTO = $this->resolverPerfil($objSistemaSeiDTO->getNumIdSistema(), $strNomePerfil);
-
-        $dtoConsulta = new PermissaoDTO();
-        $dtoConsulta->setNumIdPerfil($objPerfilDTO->getNumIdPerfil());
-        $dtoConsulta->setNumIdSistema($objSistemaSeiDTO->getNumIdSistema());
-        $dtoConsulta->setNumIdUnidade($objUnidadeDTO->getNumIdUnidade());
-        $dtoConsulta->setNumIdUsuario($objUsuarioDTO->getNumIdUsuario());
-        $dtoConsulta->retTodos();
-        $objPermissaoRN = new PermissaoRN();
-        if ($objPermissaoRN->consultar($dtoConsulta) !== null) {
-          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Usuário "' . $strSiglaUsuario . '" já possui o perfil "' . $strNomePerfil . '" na unidade "' . $strSiglaUnidade . '".');
-          continue;
-        }
-
-        $objPermissaoDTO = new PermissaoDTO();
-        $objPermissaoDTO->setNumIdPerfil($objPerfilDTO->getNumIdPerfil());
-        $objPermissaoDTO->setNumIdSistema($objSistemaSeiDTO->getNumIdSistema());
-        $objPermissaoDTO->setNumIdUnidade($objUnidadeDTO->getNumIdUnidade());
-        $objPermissaoDTO->setNumIdUsuario($objUsuarioDTO->getNumIdUsuario());
-        $objPermissaoDTO->setNumIdTipoPermissao(self::ID_TIPO_PERMISSAO_PADRAO);
-        $objPermissaoDTO->setStrSinSubunidades('N');
-        $objPermissaoDTO->setDtaDataInicio(date('d/m/Y'));
-        $objPermissaoDTO->setDtaDataFim(''); // sempre setado (mesmo vazio), ver nota acima
-
-        $objPermissaoRN->cadastrar($objPermissaoDTO);
-
-        // Conceitualmente, uma "permissao" no SIP e a concessao de um PERFIL numa UNIDADE
-        // (apontado pelo usuario) - a mensagem reflete isso, nao so "permissao concedida".
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_OK, 'Perfil "' . $strNomePerfil . '" concedido a "' . $strSiglaUsuario . '" na unidade "' . $strSiglaUnidade . '".');
+        $arrResultado[] = $this->processarPermissoesLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos'], 'sistema' => $objSistemaSeiDTO]);
       } catch (Exception $e) {
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_ERRO, $this->obterMensagemErro($e));
+        $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
       }
     }
     return $arrResultado;
   }
 
-  // InfraException lancada via lancarValidacoes()/lancarValidacao() (padrao das RN nativas
-  // do SIP para erros de regra de negocio) tem getMessage() VAZIO - o texto fica em
-  // getArrObjInfraValidacao(), exposto via __toString(). Sem isso, erro de validacao
-  // nativa apareceria como linha ERRO sem mensagem nenhuma (mesmo bug encontrado e
-  // corrigido no modulo SEI, aplicado aqui tambem por consistencia).
+  /** Uma linha de processarPermissoes(), em transacao propria (ver docblock da classe). */
+  protected function processarPermissoesLinhaControlado(array $arrParametros): array {
+    $numLinha = $arrParametros['linha'];
+    $c = $arrParametros['campos'];
+    $objSistemaSeiDTO = $arrParametros['sistema'];
+    $strSiglaOrgao = $c[1] ?? '';
+    $strSiglaUsuario = $c[2] ?? '';
+    $strSiglaUnidade = $c[7] ?? '';
+    $strNomePerfil = $c[8] ?? '';
+
+    if ($strSiglaOrgao === '' || $strSiglaUsuario === '' || $strSiglaUnidade === '' || $strNomePerfil === '') {
+      throw new InfraException('Linha incompleta (órgão/usuário/unidade/perfil obrigatórios).');
+    }
+
+    $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
+
+    $objUsuarioDTO = $this->resolverUsuario($objOrgaoDTO->getNumIdOrgao(), $strSiglaUsuario);
+    if ($objUsuarioDTO === null) {
+      throw new InfraException('Usuário "' . $strSiglaUsuario . '" não encontrado (rode a carga de usuários antes).');
+    }
+
+    $objUnidadeDTO = $this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSiglaUnidade);
+    if ($objUnidadeDTO === null) {
+      throw new InfraException('Unidade "' . $strSiglaUnidade . '" não encontrada.');
+    }
+
+    $objPerfilDTO = $this->resolverPerfil($objSistemaSeiDTO->getNumIdSistema(), $strNomePerfil);
+
+    $dtoConsulta = new PermissaoDTO();
+    $dtoConsulta->setNumIdPerfil($objPerfilDTO->getNumIdPerfil());
+    $dtoConsulta->setNumIdSistema($objSistemaSeiDTO->getNumIdSistema());
+    $dtoConsulta->setNumIdUnidade($objUnidadeDTO->getNumIdUnidade());
+    $dtoConsulta->setNumIdUsuario($objUsuarioDTO->getNumIdUsuario());
+    $dtoConsulta->retTodos();
+    $objPermissaoRN = new PermissaoRN();
+    if ($objPermissaoRN->consultar($dtoConsulta) !== null) {
+      return $this->linhaResultado($numLinha, self::STA_PULADO, 'Usuário "' . $strSiglaUsuario . '" já possui o perfil "' . $strNomePerfil . '" na unidade "' . $strSiglaUnidade . '".');
+    }
+
+    $objPermissaoDTO = new PermissaoDTO();
+    $objPermissaoDTO->setNumIdPerfil($objPerfilDTO->getNumIdPerfil());
+    $objPermissaoDTO->setNumIdSistema($objSistemaSeiDTO->getNumIdSistema());
+    $objPermissaoDTO->setNumIdUnidade($objUnidadeDTO->getNumIdUnidade());
+    $objPermissaoDTO->setNumIdUsuario($objUsuarioDTO->getNumIdUsuario());
+    $objPermissaoDTO->setNumIdTipoPermissao(self::ID_TIPO_PERMISSAO_PADRAO);
+    $objPermissaoDTO->setStrSinSubunidades('N');
+    $objPermissaoDTO->setDtaDataInicio(date('d/m/Y'));
+    $objPermissaoDTO->setDtaDataFim(''); // sempre setado (mesmo vazio), ver nota acima
+
+    $objPermissaoRN->cadastrar($objPermissaoDTO);
+
+    // Conceitualmente, uma "permissao" no SIP e a concessao de um PERFIL numa UNIDADE
+    // (apontado pelo usuario) - a mensagem reflete isso, nao so "permissao concedida".
+    return $this->linhaResultado($numLinha, self::STA_OK, 'Perfil "' . $strNomePerfil . '" concedido a "' . $strSiglaUsuario . '" na unidade "' . $strSiglaUnidade . '".');
+  }
+
+  /**
+   * Texto do erro de uma linha. Recebe a excecao que sai de processarXLinha(): o
+   * InfraRN::__call() a reembrulha numa InfraException de mensagem generica, e o motivo real
+   * esta em getPrevious(). Uma InfraException lancada via lancarValidacoes()/lancarValidacao()
+   * (padrao das RN nativas para erro de regra de negocio) tem getMessage() VAZIO: o texto fica
+   * em getArrObjInfraValidacao(), exposto por __toString(). Sem isso o erro apareceria na
+   * linha do relatorio sem mensagem.
+   */
   private function obterMensagemErro(Exception $e): string {
-    $strMensagem = ($e instanceof InfraException) ? (string)$e : $e->getMessage();
-    return $strMensagem !== '' ? $strMensagem : get_class($e);
+    $objErro = $e->getPrevious() ?? $e;
+    $strMensagem = ($objErro instanceof InfraException) ? (string)$objErro : $objErro->getMessage();
+    return $strMensagem !== '' ? $strMensagem : get_class($objErro);
   }
 
   private function linhaResultado(int $numLinha, string $strStatus, string $strMensagem): array {

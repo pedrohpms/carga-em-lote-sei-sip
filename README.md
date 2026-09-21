@@ -101,6 +101,14 @@ Resumo do processo (idêntico para os dois): ativar a chave `Modulos` no arquivo
 
 Arquivos com muitas linhas são processados em lotes de `CargaEmLoteRN::TAMANHO_LOTE` (50 por padrão) — a tela se recarrega sozinha automaticamente até concluir. Existe porque o timeout que interromperia uma carga grande normalmente não é do PHP — é do servidor web/proxy nafrente dele, fora do alcance de um módulo que só acrescenta arquivos a uma instalação já existente. Ajuste a constante no topo de `rn/CargaEmLoteRN.php` se a instalação de destino tiver um timeout mais agressivo.
 
+### Falha em uma linha
+
+Cada linha é gravada em uma transação própria. Se uma linha falha, nada dela permanece no banco, nem as gravações parciais feitas antes do erro, e as demais linhas seguem normalmente. O relatório mostra a mensagem de erro de cada linha com falha.
+
+### Tamanho do arquivo
+
+No SEI, a tela recusa arquivos maiores que o limite do parâmetro `SEI_TAM_MB_DOC_EXTERNO`, o mesmo usado para documentos externos, e informa o valor na própria tela. O SIP não tem esse parâmetro, então vale o limite `upload_max_filesize` do PHP, também exibido na tela.
+
 ### Ordem de execução importa
 
 A carga de **Unidades e Hierarquia** (SIP) precisa rodar antes da carga de **Dados Complementares de Unidade** (SEI) — esta última só atualiza unidades que já existem (criadas pelo SIP e replicadas ao SEI). Da mesma forma, **Assuntos** (SEI) deve rodar antes de **Tipos de Processo** (SEI) sempre que o arquivo de Tipos de Processo sugerir códigos de assunto que ainda não existem na Tabela de Assuntos atual.
@@ -288,3 +296,5 @@ Cadastra tipos de processo, com assuntos sugeridos, restrições de órgão/unid
 Validado ponta a ponta contra um ambiente de laboratório completo (SEI 5.0.5 + SIP,
 containers Docker), incluindo um ciclo de reinstalação do zero e cargas de centenas de linhas
 por operação, para exercitar tanto o caminho feliz quanto o processamento em lotes.
+
+A validação foi feita somente em MySQL. O instalador declara suporte a Oracle, SQL Server e PostgreSQL, mas esses bancos não foram testados.

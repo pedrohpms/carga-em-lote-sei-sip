@@ -18,6 +18,19 @@
  *   orgao/unidade e niveis de acesso (TipoProcedimentoRN e as RN das 3 sub-entidades).
  *   CRIACAO.
  *
+ * Transacao por linha: as operacoes publicas (processarX) NAO abrem transacao. Cada uma percorre
+ * as linhas do lote e chama processarXLinha(), que o InfraRN::__call() despacha para
+ * processarXLinhaControlado(), dentro de uma transacao propria. O try/catch fica por fora
+ * dela: a linha com erro faz rollback so de si mesma, entra no relatorio como "erro" e nao
+ * interrompe as demais.
+ *
+ * Por que nao uma transacao para o lote inteiro: o InfraRN::__call() so abre transacao se o
+ * banco ainda nao esta em uma, e so quem abriu confirma ou cancela. Com o lote inteiro numa
+ * transacao, as RN do core chamadas por dentro entram nela, e o catch por linha engole o erro
+ * sem rollback. A linha que falha depois de gravar algo deixa esse resultado parcial no banco
+ * (reproduzido no laboratorio em 2026-09-21: e-mail invalido na carga de Dados
+ * Complementares de Unidade deixava o endereco gravado e a linha marcada como "erro").
+ *
  * "ATUALIZACAO" x "CRIACAO" (ver cada secao para o motivo especifico de cada uma):
  * - Unidade e Contato de Usuarios sao ATUALIZACAO porque o registro-alvo (unidade/usuario e
  *   o Contato vinculado a ele) normalmente ja existe, criado nativamente/via replicacao
@@ -173,7 +186,7 @@ class CargaEmLoteRN extends InfraRN {
   // Despacha pela extensao do arquivo temporario (preservada no upload - ver
   // carga_em_lote_form.php, processarUpload() com bolArquivoTemporarioIdentificado=true) -
   // csv/xlsx/ods convergem para o mesmo formato de retorno (array de
-  // array('linha'=>N,'campos'=>[...])), entao nenhum processarXxxControlado() precisou mudar.
+  // array('linha'=>N,'campos'=>[...])), entao nenhum processarXxx() precisou mudar.
   private function lerCsv(string $strCaminhoArquivo): array {
     $strExtensao = strtolower(pathinfo($strCaminhoArquivo, PATHINFO_EXTENSION));
     switch ($strExtensao) {
@@ -247,8 +260,23 @@ class CargaEmLoteRN extends InfraRN {
     return $arrLinhas;
   }
 
+  /**
+   * Limite de tamanho do arquivo enviado, em Mb: o mesmo parametro que o SEI usa para
+   * documento externo (SEI_TAM_MB_DOC_EXTERNO). PaginaSEI::processarUpload() so confere a
+   * extensao e os limites do PHP, entao a tela consulta este valor para recusar o arquivo
+   * antes do envio e de novo no servidor.
+   */
+  protected function obterLimiteUploadMbConectado(): int {
+    $objInfraParametro = new InfraParametro(BancoSEI::getInstance());
+    $numTamMb = $objInfraParametro->getValor('SEI_TAM_MB_DOC_EXTERNO');
+    if (InfraString::isBolVazia($numTamMb) || !is_numeric($numTamMb)) {
+      throw new InfraException('Valor do parâmetro SEI_TAM_MB_DOC_EXTERNO inválido.');
+    }
+    return (int)$numTamMb;
+  }
+
   // Le o arquivo inteiro (csv/xlsx/ods) e devolve so a fatia [offset, offset+limite) junto
-  // com o total de linhas de dado do arquivo inteiro - usado por todo processarXxxControlado()
+  // com o total de linhas de dado do arquivo inteiro - usado por todo processarXxx()
   // pra suportar processamento particionado em lotes (ver TAMANHO_LOTE acima e
   // carga_em_lote_form.php, que controla o laco de recarregamentos automaticos). Reler o
   // arquivo inteiro a cada lote e barato (poucos milhares de linhas, no maximo) perto do
@@ -276,150 +304,155 @@ class CargaEmLoteRN extends InfraRN {
    * Contato junto com a unidade), reporta erro na linha em vez de criar um do zero. Mescla a
    * lista de e-mails com a existente (nunca substitui a lista inteira, so acrescenta).
    */
-  protected function processarUnidadesComplementarControlado(array $arrParametros): array {
+  public function processarUnidadesComplementar(array $arrParametros): array {
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
-    $arrResultado = array();
+    $arrResultado = [];
     foreach ($arrLoteInfo['linhas'] as $arrLinha) {
-      $numLinha = $arrLinha['linha'];
-      $c = $arrLinha['campos'];
       try {
-        $strSiglaOrgao = $c[1] ?? '';
-        $strSiglaUnidade = $c[2] ?? '';
-        $strEmail = $c[5] ?? '';
-        $strUsaEnderecoOrgao = strtoupper(trim($c[6] ?? ''));
-        $strEndereco = $c[7] ?? '';
-        $strComplemento = $c[8] ?? '';
-        $strBairro = $c[9] ?? '';
-        $strUf = $c[10] ?? '';
-        $strCidade = $c[11] ?? '';
-        $strCep = $c[12] ?? '';
-        $strCnpj = $c[13] ?? '';
-        $strTelefone = $c[14] ?? '';
-        $strSite = $c[15] ?? '';
-
-        if ($strSiglaOrgao === '' || $strSiglaUnidade === '') {
-          throw new InfraException('Linha incompleta (órgão/sigla obrigatórios).');
-        }
-
-        $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
-
-        $objUnidadeDTO = $this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSiglaUnidade);
-        if ($objUnidadeDTO === null) {
-          throw new InfraException('Unidade "' . $strSiglaUnidade . '" não encontrada no SEI (rode a carga de unidades do módulo SIP antes).');
-        }
-        if (!$objUnidadeDTO->getNumIdContato()) {
-          throw new InfraException('Unidade "' . $strSiglaUnidade . '" não tem contato vinculado (caso não esperado, não tratado nesta versão).');
-        }
-
-        $numIdPais = PaisINT::buscarIdPaisBrasil();
-
-        $numIdUf = null;
-        if ($strUf !== '') {
-          $objUfDTO = $this->resolverUf($strUf, $numIdPais);
-          if ($objUfDTO === null) {
-            throw new InfraException('UF "' . $strUf . '" não encontrada.');
-          }
-          $numIdUf = $objUfDTO->getNumIdUf();
-        }
-
-        $numIdCidade = null;
-        if ($strCidade !== '' && $numIdUf !== null) {
-          $objCidadeDTO = $this->resolverCidade($strCidade, $numIdUf);
-          if ($objCidadeDTO === null) {
-            throw new InfraException('Cidade "' . $strCidade . '" não encontrada na UF "' . $strUf . '".');
-          }
-          $numIdCidade = $objCidadeDTO->getNumIdCidade();
-        }
-
-        // Contato "reservado do sistema" (tipo_contato "Unidades <ORGAO>") so aceita alteracao
-        // com StaOperacao=REPLICACAO - mesmo sinalizador que UnidadeRN::alterarRN0132Controlado
-        // usa internamente quando toca no Contato da unidade.
-        $objContatoDTO = new ContatoDTO();
-        $objContatoDTO->setNumIdContato($objUnidadeDTO->getNumIdContato());
-        if ($strEndereco !== '') {
-          $objContatoDTO->setStrEndereco($strEndereco);
-        }
-        if ($strComplemento !== '') {
-          $objContatoDTO->setStrComplemento($strComplemento);
-        }
-        if ($strBairro !== '') {
-          $objContatoDTO->setStrBairro($strBairro);
-        }
-        if ($numIdUf !== null) {
-          $objContatoDTO->setNumIdUf($numIdUf);
-        }
-        if ($numIdCidade !== null) {
-          $objContatoDTO->setNumIdCidade($numIdCidade);
-        }
-        $objContatoDTO->setNumIdPais($numIdPais);
-        if ($strCep !== '') {
-          $objContatoDTO->setStrCep($strCep);
-        }
-        if ($strCnpj !== '') {
-          $objContatoDTO->setStrCnpj(InfraUtil::formatarCnpj($strCnpj));
-        }
-        if ($strTelefone !== '') {
-          $objContatoDTO->setStrTelefoneComercial($strTelefone);
-        }
-        if ($strSite !== '') {
-          $objContatoDTO->setStrSitioInternet($strSite);
-        }
-        $objContatoDTO->setStrStaOperacao('REPLICACAO');
-
-        if ($strUsaEnderecoOrgao === 'S') {
-          $objContatoDTO->setStrSinEnderecoAssociado('S');
-          $objContatoDTO->setNumIdContatoAssociado($objOrgaoDTO->getNumIdContato());
-        } else {
-          $objContatoDTO->setStrSinEnderecoAssociado('N');
-        }
-
-        $objContatoRN = new ContatoRN();
-        $objContatoRN->alterarRN0323($objContatoDTO);
-
-        // Lista de e-mails: EmailUnidadeRN nao tem "cadastrar se nao existir" embutido, e
-        // UnidadeRN::alterarRN0132Controlado apaga e recria a lista inteira quando recebe o
-        // array - por isso carregamos a lista atual e so ACRESCENTAMOS o e-mail do csv (nunca
-        // setamos so o novo sozinho, senao apagaria os demais).
-        if ($strEmail !== '') {
-          $objEmailUnidadeDTOConsulta = new EmailUnidadeDTO();
-          $objEmailUnidadeDTOConsulta->retTodos();
-          $objEmailUnidadeDTOConsulta->setNumIdUnidade($objUnidadeDTO->getNumIdUnidade());
-
-          $objEmailUnidadeRN = new EmailUnidadeRN();
-          $arrObjEmailAtual = $objEmailUnidadeRN->listar($objEmailUnidadeDTOConsulta);
-
-          $bolJaTemEmail = false;
-          foreach ($arrObjEmailAtual as $objEmailExistente) {
-            if (strcasecmp($objEmailExistente->getStrEmail(), $strEmail) === 0) {
-              $bolJaTemEmail = true;
-              break;
-            }
-          }
-
-          if (!$bolJaTemEmail) {
-            $objNovoEmailDTO = new EmailUnidadeDTO();
-            $objNovoEmailDTO->setNumIdEmailUnidade(null);
-            $objNovoEmailDTO->setStrEmail($strEmail);
-            $objNovoEmailDTO->setStrDescricao('Carga em lote');
-            $objNovoEmailDTO->setNumSequencia(count($arrObjEmailAtual) + 1);
-            $arrObjEmailAtual[] = $objNovoEmailDTO;
-
-            $objUnidadeDTOAlterar = new UnidadeDTO();
-            $objUnidadeDTOAlterar->setNumIdUnidade($objUnidadeDTO->getNumIdUnidade());
-            $objUnidadeDTOAlterar->setArrObjEmailUnidadeDTO($arrObjEmailAtual);
-
-            $objUnidadeRN = new UnidadeRN();
-            $objUnidadeRN->alterarRN0132($objUnidadeDTOAlterar);
-          }
-        }
-
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_OK, 'Unidade "' . $strSiglaUnidade . '" atualizada.');
+        $arrResultado[] = $this->processarUnidadesComplementarLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos']]);
       } catch (Exception $e) {
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_ERRO, $this->obterMensagemErro($e));
+        $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
       }
     }
-    return array('resultado' => $arrResultado, 'total' => $arrLoteInfo['total'], 'processadas' => count($arrLoteInfo['linhas']));
+    return ['resultado' => $arrResultado, 'total' => $arrLoteInfo['total'], 'processadas' => count($arrLoteInfo['linhas'])];
+  }
+
+  /** Uma linha de processarUnidadesComplementar(), em transacao propria (ver docblock da classe). */
+  protected function processarUnidadesComplementarLinhaControlado(array $arrParametros): array {
+    $numLinha = $arrParametros['linha'];
+    $c = $arrParametros['campos'];
+    $strSiglaOrgao = $c[1] ?? '';
+    $strSiglaUnidade = $c[2] ?? '';
+    $strEmail = $c[5] ?? '';
+    $strUsaEnderecoOrgao = strtoupper(trim($c[6] ?? ''));
+    $strEndereco = $c[7] ?? '';
+    $strComplemento = $c[8] ?? '';
+    $strBairro = $c[9] ?? '';
+    $strUf = $c[10] ?? '';
+    $strCidade = $c[11] ?? '';
+    $strCep = $c[12] ?? '';
+    $strCnpj = $c[13] ?? '';
+    $strTelefone = $c[14] ?? '';
+    $strSite = $c[15] ?? '';
+
+    if ($strSiglaOrgao === '' || $strSiglaUnidade === '') {
+      throw new InfraException('Linha incompleta (órgão/sigla obrigatórios).');
+    }
+
+    $objOrgaoDTO = $this->resolverOrgao($strSiglaOrgao);
+
+    $objUnidadeDTO = $this->resolverUnidade($objOrgaoDTO->getNumIdOrgao(), $strSiglaUnidade);
+    if ($objUnidadeDTO === null) {
+      throw new InfraException('Unidade "' . $strSiglaUnidade . '" não encontrada no SEI (rode a carga de unidades do módulo SIP antes).');
+    }
+    if (!$objUnidadeDTO->getNumIdContato()) {
+      throw new InfraException('Unidade "' . $strSiglaUnidade . '" não tem contato vinculado (caso não esperado, não tratado nesta versão).');
+    }
+
+    $numIdPais = PaisINT::buscarIdPaisBrasil();
+
+    $numIdUf = null;
+    if ($strUf !== '') {
+      $objUfDTO = $this->resolverUf($strUf, $numIdPais);
+      if ($objUfDTO === null) {
+        throw new InfraException('UF "' . $strUf . '" não encontrada.');
+      }
+      $numIdUf = $objUfDTO->getNumIdUf();
+    }
+
+    $numIdCidade = null;
+    if ($strCidade !== '' && $numIdUf !== null) {
+      $objCidadeDTO = $this->resolverCidade($strCidade, $numIdUf);
+      if ($objCidadeDTO === null) {
+        throw new InfraException('Cidade "' . $strCidade . '" não encontrada na UF "' . $strUf . '".');
+      }
+      $numIdCidade = $objCidadeDTO->getNumIdCidade();
+    }
+
+    // Contato "reservado do sistema" (tipo_contato "Unidades <ORGAO>") so aceita alteracao
+    // com StaOperacao=REPLICACAO - mesmo sinalizador que UnidadeRN::alterarRN0132Controlado
+    // usa internamente quando toca no Contato da unidade.
+    $objContatoDTO = new ContatoDTO();
+    $objContatoDTO->setNumIdContato($objUnidadeDTO->getNumIdContato());
+    if ($strEndereco !== '') {
+      $objContatoDTO->setStrEndereco($strEndereco);
+    }
+    if ($strComplemento !== '') {
+      $objContatoDTO->setStrComplemento($strComplemento);
+    }
+    if ($strBairro !== '') {
+      $objContatoDTO->setStrBairro($strBairro);
+    }
+    if ($numIdUf !== null) {
+      $objContatoDTO->setNumIdUf($numIdUf);
+    }
+    if ($numIdCidade !== null) {
+      $objContatoDTO->setNumIdCidade($numIdCidade);
+    }
+    $objContatoDTO->setNumIdPais($numIdPais);
+    if ($strCep !== '') {
+      $objContatoDTO->setStrCep($strCep);
+    }
+    if ($strCnpj !== '') {
+      $objContatoDTO->setStrCnpj(InfraUtil::formatarCnpj($strCnpj));
+    }
+    if ($strTelefone !== '') {
+      $objContatoDTO->setStrTelefoneComercial($strTelefone);
+    }
+    if ($strSite !== '') {
+      $objContatoDTO->setStrSitioInternet($strSite);
+    }
+    $objContatoDTO->setStrStaOperacao('REPLICACAO');
+
+    if ($strUsaEnderecoOrgao === 'S') {
+      $objContatoDTO->setStrSinEnderecoAssociado('S');
+      $objContatoDTO->setNumIdContatoAssociado($objOrgaoDTO->getNumIdContato());
+    } else {
+      $objContatoDTO->setStrSinEnderecoAssociado('N');
+    }
+
+    $objContatoRN = new ContatoRN();
+    $objContatoRN->alterarRN0323($objContatoDTO);
+
+    // Lista de e-mails: EmailUnidadeRN nao tem "cadastrar se nao existir" embutido, e
+    // UnidadeRN::alterarRN0132Controlado apaga e recria a lista inteira quando recebe o
+    // array - por isso carregamos a lista atual e so ACRESCENTAMOS o e-mail do csv (nunca
+    // setamos so o novo sozinho, senao apagaria os demais).
+    if ($strEmail !== '') {
+      $objEmailUnidadeDTOConsulta = new EmailUnidadeDTO();
+      $objEmailUnidadeDTOConsulta->retTodos();
+      $objEmailUnidadeDTOConsulta->setNumIdUnidade($objUnidadeDTO->getNumIdUnidade());
+
+      $objEmailUnidadeRN = new EmailUnidadeRN();
+      $arrObjEmailAtual = $objEmailUnidadeRN->listar($objEmailUnidadeDTOConsulta);
+
+      $bolJaTemEmail = false;
+      foreach ($arrObjEmailAtual as $objEmailExistente) {
+        if (strcasecmp($objEmailExistente->getStrEmail(), $strEmail) === 0) {
+          $bolJaTemEmail = true;
+          break;
+        }
+      }
+
+      if (!$bolJaTemEmail) {
+        $objNovoEmailDTO = new EmailUnidadeDTO();
+        $objNovoEmailDTO->setNumIdEmailUnidade(null);
+        $objNovoEmailDTO->setStrEmail($strEmail);
+        $objNovoEmailDTO->setStrDescricao('Carga em lote');
+        $objNovoEmailDTO->setNumSequencia(count($arrObjEmailAtual) + 1);
+        $arrObjEmailAtual[] = $objNovoEmailDTO;
+
+        $objUnidadeDTOAlterar = new UnidadeDTO();
+        $objUnidadeDTOAlterar->setNumIdUnidade($objUnidadeDTO->getNumIdUnidade());
+        $objUnidadeDTOAlterar->setArrObjEmailUnidadeDTO($arrObjEmailAtual);
+
+        $objUnidadeRN = new UnidadeRN();
+        $objUnidadeRN->alterarRN0132($objUnidadeDTOAlterar);
+      }
+    }
+
+    return $this->linhaResultado($numLinha, self::STA_OK, 'Unidade "' . $strSiglaUnidade . '" atualizada.');
   }
 
 
@@ -446,223 +479,223 @@ class CargaEmLoteRN extends InfraRN {
    * Unidade acima, aqui o e-mail e um campo unico (nao uma lista), entao nao ha logica de
    * mesclagem de array - so o padrao geral de "campo vazio no csv preserva o valor atual".
    */
-  protected function processarContatoUsuariosControlado(array $arrParametros): array {
+  public function processarContatoUsuarios(array $arrParametros): array {
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
-    $arrResultado = array();
+    $arrResultado = [];
     foreach ($arrLoteInfo['linhas'] as $arrLinha) {
-      $numLinha = $arrLinha['linha'];
-      $c = $arrLinha['campos'];
       try {
-        $strSigla = $c[1] ?? '';
-        $strGenero = strtoupper(trim($c[2] ?? ''));
-        $strUsaEnderecoOrgao = strtoupper(trim($c[3] ?? ''));
-        $strEndereco = $c[4] ?? '';
-        $strComplemento = $c[5] ?? '';
-        $strBairro = $c[6] ?? '';
-        $strPais = $c[7] ?? '';
-        $strUf = $c[8] ?? '';
-        $strCidade = $c[9] ?? '';
-        $strCep = $c[10] ?? '';
-        $strCargo = $c[11] ?? '';
-        $strCategoria = $c[12] ?? '';
-        $strFuncao = $c[13] ?? '';
-        $strTitulo = $c[14] ?? '';
-        $strCpf = $c[15] ?? '';
-        $strRg = $c[16] ?? '';
-        $strOrgaoExpRg = $c[17] ?? '';
-        $strDataNasc = $c[18] ?? '';
-        $strMatricula = $c[19] ?? '';
-        $strMatOab = $c[20] ?? '';
-        $strPassaporte = $c[21] ?? '';
-        $strPaisPassaporte = $c[22] ?? '';
-        $strTelComercial = $c[23] ?? '';
-        $strTelCelular = $c[24] ?? '';
-        $strTelResidencial = $c[25] ?? '';
-        $strConjuge = $c[26] ?? '';
-        $strEmail = $c[27] ?? '';
-        $strObs = $c[28] ?? '';
-
-        if ($strSigla === '') {
-          throw new InfraException('Linha incompleta (sigla do usuário obrigatória).');
-        }
-
-        $dtoUsuario = new UsuarioDTO();
-        $dtoUsuario->setBolExclusaoLogica(false);
-        $dtoUsuario->setStrSigla(trim($strSigla));
-        $dtoUsuario->retNumIdContato();
-        $dtoUsuario->retNumIdContatoOrgao();
-        $dtoUsuario->retStrSiglaOrgao();
-        $objUsuarioRN = new UsuarioRN();
-        $arrUsuarios = $objUsuarioRN->listarRN0490($dtoUsuario);
-
-        if (count($arrUsuarios) === 0) {
-          throw new InfraException('Usuário "' . $strSigla . '" não encontrado.');
-        }
-        if (count($arrUsuarios) > 1) {
-          $arrSiglasOrgao = array_map(function ($objDTO) { return $objDTO->getStrSiglaOrgao(); }, $arrUsuarios);
-          throw new InfraException('Usuário "' . $strSigla . '" existe em mais de um órgão (' . implode(', ', $arrSiglasOrgao) . ') - csv sem coluna de órgão não suporta este caso.');
-        }
-        $objUsuarioDTO = $arrUsuarios[0];
-
-        if (!$objUsuarioDTO->getNumIdContato()) {
-          throw new InfraException('Usuário "' . $strSigla . '" não tem contato vinculado (caso não esperado, não tratado nesta versão).');
-        }
-
-        $numIdPais = PaisINT::buscarIdPaisBrasil();
-        if ($strPais !== '' && strcasecmp(trim($strPais), 'Brasil') !== 0) {
-          $numIdPais = $this->resolverPais($strPais)->getNumIdPais();
-        }
-
-        $numIdUf = null;
-        if ($strUf !== '') {
-          $objUfDTO = $this->resolverUf($strUf, $numIdPais);
-          if ($objUfDTO === null) {
-            throw new InfraException('UF "' . $strUf . '" não encontrada.');
-          }
-          $numIdUf = $objUfDTO->getNumIdUf();
-        }
-
-        $numIdCidade = null;
-        if ($strCidade !== '' && $numIdUf !== null) {
-          $objCidadeDTO = $this->resolverCidade($strCidade, $numIdUf);
-          if ($objCidadeDTO === null) {
-            throw new InfraException('Cidade "' . $strCidade . '" não encontrada na UF "' . $strUf . '".');
-          }
-          $numIdCidade = $objCidadeDTO->getNumIdCidade();
-        }
-
-        $numIdPaisPassaporte = null;
-        if ($strPassaporte !== '') {
-          $numIdPaisPassaporte = $numIdPais;
-          if ($strPaisPassaporte !== '' && strcasecmp(trim($strPaisPassaporte), 'Brasil') !== 0) {
-            $numIdPaisPassaporte = $this->resolverPais($strPaisPassaporte)->getNumIdPais();
-          }
-        }
-
-        $numIdCargo = null;
-        if ($strCargo !== '') {
-          $numIdCargo = $this->resolverCargo($strCargo, $strGenero)->getNumIdCargo();
-        }
-
-        $numIdCategoria = null;
-        if ($strCategoria !== '') {
-          $numIdCategoria = $this->resolverCategoria($strCategoria)->getNumIdCategoria();
-        }
-
-        $numIdTitulo = null;
-        if ($strTitulo !== '') {
-          $numIdTitulo = $this->resolverTitulo($strTitulo)->getNumIdTitulo();
-        }
-
-        // ContatoRN::alterarRN0323Controlado preenche do banco qualquer atributo nao setado
-        // (padrao isSetX() antes do getter) - so precisamos setar o que muda, nao o DTO
-        // inteiro (confirmado lendo o corpo do metodo antes de escrever este codigo).
-        $objContatoDTO = new ContatoDTO();
-        $objContatoDTO->setNumIdContato($objUsuarioDTO->getNumIdContato());
-        if ($strGenero !== '') {
-          $objContatoDTO->setStrStaGenero($strGenero);
-        }
-        if ($strEndereco !== '') {
-          $objContatoDTO->setStrEndereco($strEndereco);
-        }
-        if ($strComplemento !== '') {
-          $objContatoDTO->setStrComplemento($strComplemento);
-        }
-        if ($strBairro !== '') {
-          $objContatoDTO->setStrBairro($strBairro);
-        }
-        if ($numIdUf !== null) {
-          $objContatoDTO->setNumIdUf($numIdUf);
-        }
-        if ($numIdCidade !== null) {
-          $objContatoDTO->setNumIdCidade($numIdCidade);
-        }
-        $objContatoDTO->setNumIdPais($numIdPais);
-        if ($strCep !== '') {
-          $objContatoDTO->setStrCep($strCep);
-        }
-        if ($numIdCargo !== null) {
-          $objContatoDTO->setNumIdCargo($numIdCargo);
-        }
-        if ($numIdCategoria !== null) {
-          $objContatoDTO->setNumIdCategoria($numIdCategoria);
-        }
-        if ($numIdTitulo !== null) {
-          $objContatoDTO->setNumIdTitulo($numIdTitulo);
-        }
-        if ($strFuncao !== '') {
-          $objContatoDTO->setStrFuncao($strFuncao);
-        }
-        if ($strCpf !== '') {
-          $objContatoDTO->setDblCpf($strCpf);
-        }
-        if ($strRg !== '') {
-          $objContatoDTO->setDblRg($strRg);
-        }
-        if ($strOrgaoExpRg !== '') {
-          $objContatoDTO->setStrOrgaoExpedidor($strOrgaoExpRg);
-        }
-        if ($strDataNasc !== '') {
-          $objContatoDTO->setDtaNascimento($strDataNasc);
-        }
-        if ($strMatricula !== '') {
-          $objContatoDTO->setStrMatricula($strMatricula);
-        }
-        if ($strMatOab !== '') {
-          $objContatoDTO->setStrMatriculaOab($strMatOab);
-        }
-        if ($strPassaporte !== '') {
-          $objContatoDTO->setStrNumeroPassaporte($strPassaporte);
-        }
-        if ($numIdPaisPassaporte !== null) {
-          $objContatoDTO->setNumIdPaisPassaporte($numIdPaisPassaporte);
-        }
-        if ($strTelComercial !== '') {
-          $objContatoDTO->setStrTelefoneComercial($strTelComercial);
-        }
-        if ($strTelCelular !== '') {
-          $objContatoDTO->setStrTelefoneCelular($strTelCelular);
-        }
-        if ($strTelResidencial !== '') {
-          $objContatoDTO->setStrTelefoneResidencial($strTelResidencial);
-        }
-        if ($strConjuge !== '') {
-          $objContatoDTO->setStrConjuge($strConjuge);
-        }
-        if ($strEmail !== '') {
-          $objContatoDTO->setStrEmail($strEmail);
-        }
-        if ($strObs !== '') {
-          $objContatoDTO->setStrObservacao($strObs);
-        }
-        // tipo_contato "Usuarios <ORGAO>" e reservado do sistema (mesmo padrao de Unidades) -
-        // REPLICACAO evita bloqueio de alteracao de campos protegidos.
-        $objContatoDTO->setStrStaOperacao('REPLICACAO');
-
-        if ($strUsaEnderecoOrgao === 'S') {
-          $objContatoDTO->setStrSinEnderecoAssociado('S');
-          $objContatoDTO->setNumIdContatoAssociado($objUsuarioDTO->getNumIdContatoOrgao());
-        } else {
-          $objContatoDTO->setStrSinEnderecoAssociado('N');
-        }
-
-        $objContatoRN = new ContatoRN();
-        $objContatoRN->alterarRN0323($objContatoDTO);
-
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_OK, 'Usuário "' . $strSigla . '" atualizado.');
+        $arrResultado[] = $this->processarContatoUsuariosLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos']]);
       } catch (Exception $e) {
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_ERRO, $this->obterMensagemErro($e));
+        $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
       }
     }
-    return array('resultado' => $arrResultado, 'total' => $arrLoteInfo['total'], 'processadas' => count($arrLoteInfo['linhas']));
+    return ['resultado' => $arrResultado, 'total' => $arrLoteInfo['total'], 'processadas' => count($arrLoteInfo['linhas'])];
   }
 
-  // InfraException lancada via lancarValidacoes()/lancarValidacao() (padrao das RN nativas
-  // do SEI para erros de regra de negocio) tem getMessage() VAZIO - o texto fica em
-  // getArrObjInfraValidacao(), exposto via __toString(). Sem isso, erro de validacao
-  // nativa aparecia como linha ERRO sem mensagem nenhuma (bug real, visto testando contra
-  // o container real).
+  /** Uma linha de processarContatoUsuarios(), em transacao propria (ver docblock da classe). */
+  protected function processarContatoUsuariosLinhaControlado(array $arrParametros): array {
+    $numLinha = $arrParametros['linha'];
+    $c = $arrParametros['campos'];
+    $strSigla = $c[1] ?? '';
+    $strGenero = strtoupper(trim($c[2] ?? ''));
+    $strUsaEnderecoOrgao = strtoupper(trim($c[3] ?? ''));
+    $strEndereco = $c[4] ?? '';
+    $strComplemento = $c[5] ?? '';
+    $strBairro = $c[6] ?? '';
+    $strPais = $c[7] ?? '';
+    $strUf = $c[8] ?? '';
+    $strCidade = $c[9] ?? '';
+    $strCep = $c[10] ?? '';
+    $strCargo = $c[11] ?? '';
+    $strCategoria = $c[12] ?? '';
+    $strFuncao = $c[13] ?? '';
+    $strTitulo = $c[14] ?? '';
+    $strCpf = $c[15] ?? '';
+    $strRg = $c[16] ?? '';
+    $strOrgaoExpRg = $c[17] ?? '';
+    $strDataNasc = $c[18] ?? '';
+    $strMatricula = $c[19] ?? '';
+    $strMatOab = $c[20] ?? '';
+    $strPassaporte = $c[21] ?? '';
+    $strPaisPassaporte = $c[22] ?? '';
+    $strTelComercial = $c[23] ?? '';
+    $strTelCelular = $c[24] ?? '';
+    $strTelResidencial = $c[25] ?? '';
+    $strConjuge = $c[26] ?? '';
+    $strEmail = $c[27] ?? '';
+    $strObs = $c[28] ?? '';
+
+    if ($strSigla === '') {
+      throw new InfraException('Linha incompleta (sigla do usuário obrigatória).');
+    }
+
+    $dtoUsuario = new UsuarioDTO();
+    $dtoUsuario->setBolExclusaoLogica(false);
+    $dtoUsuario->setStrSigla(trim($strSigla));
+    $dtoUsuario->retNumIdContato();
+    $dtoUsuario->retNumIdContatoOrgao();
+    $dtoUsuario->retStrSiglaOrgao();
+    $objUsuarioRN = new UsuarioRN();
+    $arrUsuarios = $objUsuarioRN->listarRN0490($dtoUsuario);
+
+    if (count($arrUsuarios) === 0) {
+      throw new InfraException('Usuário "' . $strSigla . '" não encontrado.');
+    }
+    if (count($arrUsuarios) > 1) {
+      $arrSiglasOrgao = array_map(function ($objDTO) { return $objDTO->getStrSiglaOrgao(); }, $arrUsuarios);
+      throw new InfraException('Usuário "' . $strSigla . '" existe em mais de um órgão (' . implode(', ', $arrSiglasOrgao) . ') - csv sem coluna de órgão não suporta este caso.');
+    }
+    $objUsuarioDTO = $arrUsuarios[0];
+
+    if (!$objUsuarioDTO->getNumIdContato()) {
+      throw new InfraException('Usuário "' . $strSigla . '" não tem contato vinculado (caso não esperado, não tratado nesta versão).');
+    }
+
+    $numIdPais = PaisINT::buscarIdPaisBrasil();
+    if ($strPais !== '' && strcasecmp(trim($strPais), 'Brasil') !== 0) {
+      $numIdPais = $this->resolverPais($strPais)->getNumIdPais();
+    }
+
+    $numIdUf = null;
+    if ($strUf !== '') {
+      $objUfDTO = $this->resolverUf($strUf, $numIdPais);
+      if ($objUfDTO === null) {
+        throw new InfraException('UF "' . $strUf . '" não encontrada.');
+      }
+      $numIdUf = $objUfDTO->getNumIdUf();
+    }
+
+    $numIdCidade = null;
+    if ($strCidade !== '' && $numIdUf !== null) {
+      $objCidadeDTO = $this->resolverCidade($strCidade, $numIdUf);
+      if ($objCidadeDTO === null) {
+        throw new InfraException('Cidade "' . $strCidade . '" não encontrada na UF "' . $strUf . '".');
+      }
+      $numIdCidade = $objCidadeDTO->getNumIdCidade();
+    }
+
+    $numIdPaisPassaporte = null;
+    if ($strPassaporte !== '') {
+      $numIdPaisPassaporte = $numIdPais;
+      if ($strPaisPassaporte !== '' && strcasecmp(trim($strPaisPassaporte), 'Brasil') !== 0) {
+        $numIdPaisPassaporte = $this->resolverPais($strPaisPassaporte)->getNumIdPais();
+      }
+    }
+
+    $numIdCargo = null;
+    if ($strCargo !== '') {
+      $numIdCargo = $this->resolverCargo($strCargo, $strGenero)->getNumIdCargo();
+    }
+
+    $numIdCategoria = null;
+    if ($strCategoria !== '') {
+      $numIdCategoria = $this->resolverCategoria($strCategoria)->getNumIdCategoria();
+    }
+
+    $numIdTitulo = null;
+    if ($strTitulo !== '') {
+      $numIdTitulo = $this->resolverTitulo($strTitulo)->getNumIdTitulo();
+    }
+
+    // ContatoRN::alterarRN0323Controlado preenche do banco qualquer atributo nao setado
+    // (padrao isSetX() antes do getter) - so precisamos setar o que muda, nao o DTO
+    // inteiro (confirmado lendo o corpo do metodo antes de escrever este codigo).
+    $objContatoDTO = new ContatoDTO();
+    $objContatoDTO->setNumIdContato($objUsuarioDTO->getNumIdContato());
+    if ($strGenero !== '') {
+      $objContatoDTO->setStrStaGenero($strGenero);
+    }
+    if ($strEndereco !== '') {
+      $objContatoDTO->setStrEndereco($strEndereco);
+    }
+    if ($strComplemento !== '') {
+      $objContatoDTO->setStrComplemento($strComplemento);
+    }
+    if ($strBairro !== '') {
+      $objContatoDTO->setStrBairro($strBairro);
+    }
+    if ($numIdUf !== null) {
+      $objContatoDTO->setNumIdUf($numIdUf);
+    }
+    if ($numIdCidade !== null) {
+      $objContatoDTO->setNumIdCidade($numIdCidade);
+    }
+    $objContatoDTO->setNumIdPais($numIdPais);
+    if ($strCep !== '') {
+      $objContatoDTO->setStrCep($strCep);
+    }
+    if ($numIdCargo !== null) {
+      $objContatoDTO->setNumIdCargo($numIdCargo);
+    }
+    if ($numIdCategoria !== null) {
+      $objContatoDTO->setNumIdCategoria($numIdCategoria);
+    }
+    if ($numIdTitulo !== null) {
+      $objContatoDTO->setNumIdTitulo($numIdTitulo);
+    }
+    if ($strFuncao !== '') {
+      $objContatoDTO->setStrFuncao($strFuncao);
+    }
+    if ($strCpf !== '') {
+      $objContatoDTO->setDblCpf($strCpf);
+    }
+    if ($strRg !== '') {
+      $objContatoDTO->setDblRg($strRg);
+    }
+    if ($strOrgaoExpRg !== '') {
+      $objContatoDTO->setStrOrgaoExpedidor($strOrgaoExpRg);
+    }
+    if ($strDataNasc !== '') {
+      $objContatoDTO->setDtaNascimento($strDataNasc);
+    }
+    if ($strMatricula !== '') {
+      $objContatoDTO->setStrMatricula($strMatricula);
+    }
+    if ($strMatOab !== '') {
+      $objContatoDTO->setStrMatriculaOab($strMatOab);
+    }
+    if ($strPassaporte !== '') {
+      $objContatoDTO->setStrNumeroPassaporte($strPassaporte);
+    }
+    if ($numIdPaisPassaporte !== null) {
+      $objContatoDTO->setNumIdPaisPassaporte($numIdPaisPassaporte);
+    }
+    if ($strTelComercial !== '') {
+      $objContatoDTO->setStrTelefoneComercial($strTelComercial);
+    }
+    if ($strTelCelular !== '') {
+      $objContatoDTO->setStrTelefoneCelular($strTelCelular);
+    }
+    if ($strTelResidencial !== '') {
+      $objContatoDTO->setStrTelefoneResidencial($strTelResidencial);
+    }
+    if ($strConjuge !== '') {
+      $objContatoDTO->setStrConjuge($strConjuge);
+    }
+    if ($strEmail !== '') {
+      $objContatoDTO->setStrEmail($strEmail);
+    }
+    if ($strObs !== '') {
+      $objContatoDTO->setStrObservacao($strObs);
+    }
+    // tipo_contato "Usuarios <ORGAO>" e reservado do sistema (mesmo padrao de Unidades) -
+    // REPLICACAO evita bloqueio de alteracao de campos protegidos.
+    $objContatoDTO->setStrStaOperacao('REPLICACAO');
+
+    if ($strUsaEnderecoOrgao === 'S') {
+      $objContatoDTO->setStrSinEnderecoAssociado('S');
+      $objContatoDTO->setNumIdContatoAssociado($objUsuarioDTO->getNumIdContatoOrgao());
+    } else {
+      $objContatoDTO->setStrSinEnderecoAssociado('N');
+    }
+
+    $objContatoRN = new ContatoRN();
+    $objContatoRN->alterarRN0323($objContatoDTO);
+
+    return $this->linhaResultado($numLinha, self::STA_OK, 'Usuário "' . $strSigla . '" atualizado.');
+  }
+
   // ---------------------------------------------------------------------
   // Assuntos da Tabela de Assuntos (macro 7.cargaAssuntos)
   // Colunas do csv (exemploAssuntos.csv):
@@ -723,81 +756,84 @@ class CargaEmLoteRN extends InfraRN {
     throw new InfraException('Destinação "' . $strDestinacao . '" não reconhecida (use "Guarda" ou "Eliminação").');
   }
 
-  // InfraRN::__call() (magia de despacho publico, codigo do core) so aceita um segundo
-  // parametro quando ele e uma InfraException - qualquer outro tipo cai no "Tipo invalido
-  // para o segundo parametro", entao os dois dados desta operacao (arquivo + tabela opcional)
-  // precisam vir empacotados num unico array, ao contrario das demais operacoes (um parametro
-  // so).
+  // Os dados desta operacao (arquivo, tabela opcional, offset/limite) vem empacotados num unico
+  // array, mesmo contrato das demais: InfraRN::__call() so aceita um parametro nos metodos
+  // *Controlado (um segundo so se for uma InfraException).
   /**
    * Cadastra assuntos na Tabela de Assuntos (CCD/TTD) - operacao de CRIACAO (pula/STA_PULADO
    * se o codigo estruturado ja existir NA MESMA TABELA, cadastra/STA_OK caso contrario). Usa
    * a tabela marcada como atual por padrao; o parametro opcional 'nomeTabela' (dentro do
-   * mesmo array $arrParametros, ver nota do __call logo acima) permite escolher outra - util
+   * mesmo array $arrParametros, ver nota acima) permite escolher outra - util
    * pra quem esta preparando uma tabela nova, ainda nao promovida a atual.
    */
-  protected function processarAssuntosControlado(array $arrParametros): array {
+  public function processarAssuntos(array $arrParametros): array {
     $strCaminhoArquivo = $arrParametros['csv'];
     $strNomeTabela = $arrParametros['nomeTabela'] ?? null;
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
-    $arrResultado = array();
+    $arrResultado = [];
     $objTabelaAssuntosDTO = $this->resolverTabelaAssuntos($strNomeTabela);
 
     foreach ($arrLoteInfo['linhas'] as $arrLinha) {
-      $numLinha = $arrLinha['linha'];
-      $c = $arrLinha['campos'];
       try {
-        $strCodigo = trim($c[1] ?? '');
-        $strNome = trim($c[2] ?? '');
-        $strChkEstrutural = strtoupper(trim($c[3] ?? ''));
-        $strPrazoCorrente = trim($c[4] ?? '');
-        $strPrazoIntermed = trim($c[5] ?? '');
-        $strDestinacao = trim($c[6] ?? '');
-        $strObs = trim($c[7] ?? '');
-
-        if ($strCodigo === '' || $strNome === '') {
-          throw new InfraException('Linha incompleta (código/nome do assunto obrigatórios).');
-        }
-
-        $strSinEstrutural = ($strChkEstrutural === 'S') ? 'S' : 'N';
-
-        $objAssuntoDTOFiltro = new AssuntoDTO();
-        $objAssuntoDTOFiltro->setBolExclusaoLogica(false);
-        $objAssuntoDTOFiltro->setNumIdTabelaAssuntos($objTabelaAssuntosDTO->getNumIdTabelaAssuntos());
-        $objAssuntoDTOFiltro->setStrCodigoEstruturado($strCodigo);
-        $objAssuntoRN = new AssuntoRN();
-        if ($objAssuntoRN->contarRN0249($objAssuntoDTOFiltro) > 0) {
-          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Assunto "' . $strCodigo . '" já existe.');
-          continue;
-        }
-
-        $objAssuntoDTO = new AssuntoDTO();
-        $objAssuntoDTO->setNumIdAssunto(null);
-        $objAssuntoDTO->setNumIdTabelaAssuntos($objTabelaAssuntosDTO->getNumIdTabelaAssuntos());
-        $objAssuntoDTO->setStrCodigoEstruturado($strCodigo);
-        $objAssuntoDTO->setStrDescricao($strNome);
-        $objAssuntoDTO->setStrSinEstrutural($strSinEstrutural);
-        if ($strSinEstrutural === 'N') {
-          if ($strPrazoCorrente === '' || $strPrazoIntermed === '' || $strDestinacao === '') {
-            throw new InfraException('Assunto "' . $strCodigo . '" não é estrutural - prazo corrente, prazo intermediário e destinação são obrigatórios.');
-          }
-          $objAssuntoDTO->setNumPrazoCorrente($strPrazoCorrente);
-          $objAssuntoDTO->setNumPrazoIntermediario($strPrazoIntermed);
-          $objAssuntoDTO->setStrStaDestinacao($this->resolverStaDestinacao($strDestinacao));
-        }
-        // Operacao de CRIACAO (nao alteracao) - diferente das duas operacoes anteriores,
-        // aqui nao ha valor previo a preservar; AssuntoBD::cadastrar() chama o getter de
-        // Observacao internamente, entao precisa estar setado (mesmo que null) sempre.
-        $objAssuntoDTO->setStrObservacao($strObs !== '' ? $strObs : null);
-        $objAssuntoDTO->setStrSinAtivo('S');
-
-        $objAssuntoRN->cadastrarRN0259($objAssuntoDTO);
-
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_OK, 'Assunto "' . $strCodigo . '" cadastrado.');
+        $arrResultado[] = $this->processarAssuntosLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos'], 'tabela' => $objTabelaAssuntosDTO]);
       } catch (Exception $e) {
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_ERRO, $this->obterMensagemErro($e));
+        $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
       }
     }
-    return array('resultado' => $arrResultado, 'total' => $arrLoteInfo['total'], 'processadas' => count($arrLoteInfo['linhas']));
+    return ['resultado' => $arrResultado, 'total' => $arrLoteInfo['total'], 'processadas' => count($arrLoteInfo['linhas'])];
+  }
+
+  /** Uma linha de processarAssuntos(), em transacao propria (ver docblock da classe). */
+  protected function processarAssuntosLinhaControlado(array $arrParametros): array {
+    $numLinha = $arrParametros['linha'];
+    $c = $arrParametros['campos'];
+    $objTabelaAssuntosDTO = $arrParametros['tabela'];
+    $strCodigo = trim($c[1] ?? '');
+    $strNome = trim($c[2] ?? '');
+    $strChkEstrutural = strtoupper(trim($c[3] ?? ''));
+    $strPrazoCorrente = trim($c[4] ?? '');
+    $strPrazoIntermed = trim($c[5] ?? '');
+    $strDestinacao = trim($c[6] ?? '');
+    $strObs = trim($c[7] ?? '');
+
+    if ($strCodigo === '' || $strNome === '') {
+      throw new InfraException('Linha incompleta (código/nome do assunto obrigatórios).');
+    }
+
+    $strSinEstrutural = ($strChkEstrutural === 'S') ? 'S' : 'N';
+
+    $objAssuntoDTOFiltro = new AssuntoDTO();
+    $objAssuntoDTOFiltro->setBolExclusaoLogica(false);
+    $objAssuntoDTOFiltro->setNumIdTabelaAssuntos($objTabelaAssuntosDTO->getNumIdTabelaAssuntos());
+    $objAssuntoDTOFiltro->setStrCodigoEstruturado($strCodigo);
+    $objAssuntoRN = new AssuntoRN();
+    if ($objAssuntoRN->contarRN0249($objAssuntoDTOFiltro) > 0) {
+      return $this->linhaResultado($numLinha, self::STA_PULADO, 'Assunto "' . $strCodigo . '" já existe.');
+    }
+
+    $objAssuntoDTO = new AssuntoDTO();
+    $objAssuntoDTO->setNumIdAssunto(null);
+    $objAssuntoDTO->setNumIdTabelaAssuntos($objTabelaAssuntosDTO->getNumIdTabelaAssuntos());
+    $objAssuntoDTO->setStrCodigoEstruturado($strCodigo);
+    $objAssuntoDTO->setStrDescricao($strNome);
+    $objAssuntoDTO->setStrSinEstrutural($strSinEstrutural);
+    if ($strSinEstrutural === 'N') {
+      if ($strPrazoCorrente === '' || $strPrazoIntermed === '' || $strDestinacao === '') {
+        throw new InfraException('Assunto "' . $strCodigo . '" não é estrutural - prazo corrente, prazo intermediário e destinação são obrigatórios.');
+      }
+      $objAssuntoDTO->setNumPrazoCorrente($strPrazoCorrente);
+      $objAssuntoDTO->setNumPrazoIntermediario($strPrazoIntermed);
+      $objAssuntoDTO->setStrStaDestinacao($this->resolverStaDestinacao($strDestinacao));
+    }
+    // Operacao de CRIACAO (nao alteracao) - diferente das duas operacoes anteriores,
+    // aqui nao ha valor previo a preservar; AssuntoBD::cadastrar() chama o getter de
+    // Observacao internamente, entao precisa estar setado (mesmo que null) sempre.
+    $objAssuntoDTO->setStrObservacao($strObs !== '' ? $strObs : null);
+    $objAssuntoDTO->setStrSinAtivo('S');
+
+    $objAssuntoRN->cadastrarRN0259($objAssuntoDTO);
+
+    return $this->linhaResultado($numLinha, self::STA_OK, 'Assunto "' . $strCodigo . '" cadastrado.');
   }
 
   // ---------------------------------------------------------------------
@@ -909,160 +945,174 @@ class CargaEmLoteRN extends InfraRN {
    * precisam existir na Tabela de Assuntos atual - rode a carga de Assuntos antes, se for o
    * caso.
    */
-  protected function processarTiposProcessoControlado(array $arrParametros): array {
+  public function processarTiposProcesso(array $arrParametros): array {
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
-    $arrResultado = array();
+    $arrResultado = [];
     $objTabelaAssuntosDTO = $this->resolverTabelaAssuntos(null);
 
     foreach ($arrLoteInfo['linhas'] as $arrLinha) {
-      $numLinha = $arrLinha['linha'];
-      $c = $arrLinha['campos'];
       try {
-        $strNome = trim($c[1] ?? '');
-        $strDescricao = trim($c[2] ?? '');
-        $strSugestaoAssuntos = $c[3] ?? '';
-        $strRestringirOrgaos = $c[4] ?? '';
-        $strRestringirUnidades = $c[5] ?? '';
-        $strNiveisPermitidos = $c[6] ?? '';
-        $strNivelSugerido = trim($c[7] ?? '');
-        $strGrauSigilo = strtoupper(trim($c[8] ?? ''));
-        $strHipoteseLegal = trim($c[9] ?? '');
-        $strExclusivoOuvidoria = $c[10] ?? '';
-        $strContatoAnonimo = $c[11] ?? '';
-        $strProcessoUnico = $c[12] ?? '';
-        $strInternoSistema = $c[13] ?? '';
-
-        if ($strNome === '') {
-          throw new InfraException('Linha incompleta (nome do tipo de processo obrigatório).');
-        }
-
-        $strSinOuvidoria = $this->resolverSinalizadorSimNao($strExclusivoOuvidoria);
-
-        // Duplicidade: mesmo par (Nome, SinOuvidoria) validado nativamente em
-        // TipoProcedimentoRN::validarStrNomeRN0272.
-        $objTipoProcedimentoDTOFiltro = new TipoProcedimentoDTO();
-        $objTipoProcedimentoDTOFiltro->setBolExclusaoLogica(false);
-        $objTipoProcedimentoDTOFiltro->setStrNome($strNome);
-        $objTipoProcedimentoDTOFiltro->setStrSinOuvidoria($strSinOuvidoria);
-        $objTipoProcedimentoRN = new TipoProcedimentoRN();
-        if ($objTipoProcedimentoRN->contarRN0270($objTipoProcedimentoDTOFiltro) > 0) {
-          $arrResultado[] = $this->linhaResultado($numLinha, self::STA_PULADO, 'Tipo de Processo "' . $strNome . '" já existe.');
-          continue;
-        }
-
-        // Assuntos sugeridos
-        $arrObjRelTipoProcedimentoAssuntoDTO = array();
-        $numSequenciaAssunto = 1;
-        foreach ($this->parseListaPontoVirgula($strSugestaoAssuntos) as $strCodigoAssunto) {
-          $objAssuntoDTO = $this->resolverAssuntoPorCodigo($strCodigoAssunto, $objTabelaAssuntosDTO->getNumIdTabelaAssuntos());
-          $objRelDTO = new RelTipoProcedimentoAssuntoDTO();
-          $objRelDTO->setNumIdAssunto($objAssuntoDTO->getNumIdAssunto());
-          $objRelDTO->setNumSequencia($numSequenciaAssunto);
-          $arrObjRelTipoProcedimentoAssuntoDTO[] = $objRelDTO;
-          $numSequenciaAssunto++;
-        }
-
-        // Restricoes de orgao/unidade: restringirAsUnidades detalha por orgao
-        // ("ORGAO:UNIDADE1|UNIDADE2;ORGAO2:UNIDADE3"), restringirAosOrgaos e a lista mestra -
-        // um orgao presente so em restringirAosOrgaos vira uma unica restricao "orgao inteiro"
-        // (IdUnidade nulo); um orgao com detalhamento em restringirAsUnidades vira uma
-        // restricao por unidade listada. Uniao das duas colunas usada como lista de orgaos,
-        // para nao depender de qual das duas o operador preencheu.
-        $arrUnidadesPorOrgao = array();
-        foreach ($this->parseListaPontoVirgula($strRestringirUnidades) as $strGrupoOrgaoUnidades) {
-          $arrPartes = explode(':', $strGrupoOrgaoUnidades, 2);
-          $strSiglaOrgaoGrupo = trim($arrPartes[0]);
-          $arrSiglasUnidade = isset($arrPartes[1]) ? array_filter(array_map('trim', explode('|', $arrPartes[1])), function ($s) { return $s !== ''; }) : array();
-          if ($strSiglaOrgaoGrupo !== '') {
-            $arrUnidadesPorOrgao[$strSiglaOrgaoGrupo] = array_values($arrSiglasUnidade);
-          }
-        }
-
-        $arrSiglasOrgaoRestricao = $this->parseListaPontoVirgula($strRestringirOrgaos);
-        foreach (array_keys($arrUnidadesPorOrgao) as $strSiglaOrgaoGrupo) {
-          if (!in_array($strSiglaOrgaoGrupo, $arrSiglasOrgaoRestricao, true)) {
-            $arrSiglasOrgaoRestricao[] = $strSiglaOrgaoGrupo;
-          }
-        }
-
-        $arrObjTipoProcedRestricaoDTO = array();
-        foreach ($arrSiglasOrgaoRestricao as $strSiglaOrgaoRestricao) {
-          $objOrgaoDTORestricao = $this->resolverOrgao($strSiglaOrgaoRestricao);
-          $arrSiglasUnidadeRestricao = $arrUnidadesPorOrgao[$strSiglaOrgaoRestricao] ?? array();
-
-          if (count($arrSiglasUnidadeRestricao) === 0) {
-            $objRestricaoDTO = new TipoProcedRestricaoDTO();
-            $objRestricaoDTO->setNumIdOrgao($objOrgaoDTORestricao->getNumIdOrgao());
-            $objRestricaoDTO->setNumIdUnidade(null);
-            $arrObjTipoProcedRestricaoDTO[] = $objRestricaoDTO;
-          } else {
-            foreach ($arrSiglasUnidadeRestricao as $strSiglaUnidadeRestricao) {
-              $objUnidadeDTORestricao = $this->resolverUnidade($objOrgaoDTORestricao->getNumIdOrgao(), $strSiglaUnidadeRestricao);
-              if ($objUnidadeDTORestricao === null) {
-                throw new InfraException('Unidade "' . $strSiglaUnidadeRestricao . '" não encontrada no órgão "' . $strSiglaOrgaoRestricao . '".');
-              }
-              $objRestricaoDTO = new TipoProcedRestricaoDTO();
-              $objRestricaoDTO->setNumIdOrgao($objOrgaoDTORestricao->getNumIdOrgao());
-              $objRestricaoDTO->setNumIdUnidade($objUnidadeDTORestricao->getNumIdUnidade());
-              $arrObjTipoProcedRestricaoDTO[] = $objRestricaoDTO;
-            }
-          }
-        }
-
-        // Niveis de acesso permitidos (obrigatorio pelo menos um)
-        $arrTokensNiveis = $this->parseListaPontoVirgula($strNiveisPermitidos);
-        if (count($arrTokensNiveis) === 0) {
-          throw new InfraException('Níveis de acesso permitidos não informados.');
-        }
-        $arrObjNivelAcessoPermitidoDTO = array();
-        foreach ($arrTokensNiveis as $strTokenNivel) {
-          $objNivelDTO = new NivelAcessoPermitidoDTO();
-          $objNivelDTO->setNumIdNivelAcessoPermitido(null);
-          $objNivelDTO->setStrStaNivelAcesso($this->resolverStaNivelAcesso($strTokenNivel));
-          $arrObjNivelAcessoPermitidoDTO[] = $objNivelDTO;
-        }
-
-        if ($strNivelSugerido === '') {
-          throw new InfraException('Sugestão para o nível de acesso não informada.');
-        }
-        $strStaNivelAcessoSugestao = $this->resolverStaNivelAcesso($strNivelSugerido);
-
-        $numIdHipoteseLegalSugestao = null;
-        if ($strHipoteseLegal !== '') {
-          $numIdHipoteseLegalSugestao = $this->resolverHipoteseLegal($strHipoteseLegal)->getNumIdHipoteseLegal();
-        }
-
-        $objTipoProcedimentoDTO = new TipoProcedimentoDTO();
-        $objTipoProcedimentoDTO->setNumIdTipoProcedimento(null);
-        $objTipoProcedimentoDTO->setNumIdHipoteseLegalSugestao($numIdHipoteseLegalSugestao);
-        $objTipoProcedimentoDTO->setNumIdPlanoTrabalho(null);
-        $objTipoProcedimentoDTO->setStrNome($strNome);
-        $objTipoProcedimentoDTO->setStrDescricao($strDescricao !== '' ? $strDescricao : null);
-        $objTipoProcedimentoDTO->setStrStaNivelAcessoSugestao($strStaNivelAcessoSugestao);
-        $objTipoProcedimentoDTO->setStrStaGrauSigiloSugestao($strGrauSigilo !== '' ? $strGrauSigilo : null);
-        $objTipoProcedimentoDTO->setStrSinAtivo('S');
-        $objTipoProcedimentoDTO->setStrSinInterno($this->resolverSinalizadorSimNao($strInternoSistema));
-        $objTipoProcedimentoDTO->setStrSinOuvidoria($strSinOuvidoria);
-        $objTipoProcedimentoDTO->setStrSinOuvidoriaAnonimo($this->resolverSinalizadorSimNao($strContatoAnonimo));
-        $objTipoProcedimentoDTO->setStrSinIndividual($this->resolverSinalizadorSimNao($strProcessoUnico));
-        $objTipoProcedimentoDTO->setArrObjRelTipoProcedimentoAssuntoDTO($arrObjRelTipoProcedimentoAssuntoDTO);
-        $objTipoProcedimentoDTO->setArrObjTipoProcedRestricaoDTO($arrObjTipoProcedRestricaoDTO);
-        $objTipoProcedimentoDTO->setArrObjNivelAcessoPermitidoDTO($arrObjNivelAcessoPermitidoDTO);
-
-        $objTipoProcedimentoRN->cadastrarRN0265($objTipoProcedimentoDTO);
-
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_OK, 'Tipo de Processo "' . $strNome . '" cadastrado.');
+        $arrResultado[] = $this->processarTiposProcessoLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos'], 'tabela' => $objTabelaAssuntosDTO]);
       } catch (Exception $e) {
-        $arrResultado[] = $this->linhaResultado($numLinha, self::STA_ERRO, $this->obterMensagemErro($e));
+        $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
       }
     }
-    return array('resultado' => $arrResultado, 'total' => $arrLoteInfo['total'], 'processadas' => count($arrLoteInfo['linhas']));
+    return ['resultado' => $arrResultado, 'total' => $arrLoteInfo['total'], 'processadas' => count($arrLoteInfo['linhas'])];
   }
 
+  /** Uma linha de processarTiposProcesso(), em transacao propria (ver docblock da classe). */
+  protected function processarTiposProcessoLinhaControlado(array $arrParametros): array {
+    $numLinha = $arrParametros['linha'];
+    $c = $arrParametros['campos'];
+    $objTabelaAssuntosDTO = $arrParametros['tabela'];
+    $strNome = trim($c[1] ?? '');
+    $strDescricao = trim($c[2] ?? '');
+    $strSugestaoAssuntos = $c[3] ?? '';
+    $strRestringirOrgaos = $c[4] ?? '';
+    $strRestringirUnidades = $c[5] ?? '';
+    $strNiveisPermitidos = $c[6] ?? '';
+    $strNivelSugerido = trim($c[7] ?? '');
+    $strGrauSigilo = strtoupper(trim($c[8] ?? ''));
+    $strHipoteseLegal = trim($c[9] ?? '');
+    $strExclusivoOuvidoria = $c[10] ?? '';
+    $strContatoAnonimo = $c[11] ?? '';
+    $strProcessoUnico = $c[12] ?? '';
+    $strInternoSistema = $c[13] ?? '';
+
+    if ($strNome === '') {
+      throw new InfraException('Linha incompleta (nome do tipo de processo obrigatório).');
+    }
+
+    $strSinOuvidoria = $this->resolverSinalizadorSimNao($strExclusivoOuvidoria);
+
+    // Duplicidade: mesmo par (Nome, SinOuvidoria) validado nativamente em
+    // TipoProcedimentoRN::validarStrNomeRN0272.
+    $objTipoProcedimentoDTOFiltro = new TipoProcedimentoDTO();
+    $objTipoProcedimentoDTOFiltro->setBolExclusaoLogica(false);
+    $objTipoProcedimentoDTOFiltro->setStrNome($strNome);
+    $objTipoProcedimentoDTOFiltro->setStrSinOuvidoria($strSinOuvidoria);
+    $objTipoProcedimentoRN = new TipoProcedimentoRN();
+    if ($objTipoProcedimentoRN->contarRN0270($objTipoProcedimentoDTOFiltro) > 0) {
+      return $this->linhaResultado($numLinha, self::STA_PULADO, 'Tipo de Processo "' . $strNome . '" já existe.');
+    }
+
+    // Assuntos sugeridos
+    $arrObjRelTipoProcedimentoAssuntoDTO = array();
+    $numSequenciaAssunto = 1;
+    foreach ($this->parseListaPontoVirgula($strSugestaoAssuntos) as $strCodigoAssunto) {
+      $objAssuntoDTO = $this->resolverAssuntoPorCodigo($strCodigoAssunto, $objTabelaAssuntosDTO->getNumIdTabelaAssuntos());
+      $objRelDTO = new RelTipoProcedimentoAssuntoDTO();
+      $objRelDTO->setNumIdAssunto($objAssuntoDTO->getNumIdAssunto());
+      $objRelDTO->setNumSequencia($numSequenciaAssunto);
+      $arrObjRelTipoProcedimentoAssuntoDTO[] = $objRelDTO;
+      $numSequenciaAssunto++;
+    }
+
+    // Restricoes de orgao/unidade: restringirAsUnidades detalha por orgao
+    // ("ORGAO:UNIDADE1|UNIDADE2;ORGAO2:UNIDADE3"), restringirAosOrgaos e a lista mestra -
+    // um orgao presente so em restringirAosOrgaos vira uma unica restricao "orgao inteiro"
+    // (IdUnidade nulo); um orgao com detalhamento em restringirAsUnidades vira uma
+    // restricao por unidade listada. Uniao das duas colunas usada como lista de orgaos,
+    // para nao depender de qual das duas o operador preencheu.
+    $arrUnidadesPorOrgao = array();
+    foreach ($this->parseListaPontoVirgula($strRestringirUnidades) as $strGrupoOrgaoUnidades) {
+      $arrPartes = explode(':', $strGrupoOrgaoUnidades, 2);
+      $strSiglaOrgaoGrupo = trim($arrPartes[0]);
+      $arrSiglasUnidade = isset($arrPartes[1]) ? array_filter(array_map('trim', explode('|', $arrPartes[1])), function ($s) { return $s !== ''; }) : array();
+      if ($strSiglaOrgaoGrupo !== '') {
+        $arrUnidadesPorOrgao[$strSiglaOrgaoGrupo] = array_values($arrSiglasUnidade);
+      }
+    }
+
+    $arrSiglasOrgaoRestricao = $this->parseListaPontoVirgula($strRestringirOrgaos);
+    foreach (array_keys($arrUnidadesPorOrgao) as $strSiglaOrgaoGrupo) {
+      if (!in_array($strSiglaOrgaoGrupo, $arrSiglasOrgaoRestricao, true)) {
+        $arrSiglasOrgaoRestricao[] = $strSiglaOrgaoGrupo;
+      }
+    }
+
+    $arrObjTipoProcedRestricaoDTO = array();
+    foreach ($arrSiglasOrgaoRestricao as $strSiglaOrgaoRestricao) {
+      $objOrgaoDTORestricao = $this->resolverOrgao($strSiglaOrgaoRestricao);
+      $arrSiglasUnidadeRestricao = $arrUnidadesPorOrgao[$strSiglaOrgaoRestricao] ?? array();
+
+      if (count($arrSiglasUnidadeRestricao) === 0) {
+        $objRestricaoDTO = new TipoProcedRestricaoDTO();
+        $objRestricaoDTO->setNumIdOrgao($objOrgaoDTORestricao->getNumIdOrgao());
+        $objRestricaoDTO->setNumIdUnidade(null);
+        $arrObjTipoProcedRestricaoDTO[] = $objRestricaoDTO;
+      } else {
+        foreach ($arrSiglasUnidadeRestricao as $strSiglaUnidadeRestricao) {
+          $objUnidadeDTORestricao = $this->resolverUnidade($objOrgaoDTORestricao->getNumIdOrgao(), $strSiglaUnidadeRestricao);
+          if ($objUnidadeDTORestricao === null) {
+            throw new InfraException('Unidade "' . $strSiglaUnidadeRestricao . '" não encontrada no órgão "' . $strSiglaOrgaoRestricao . '".');
+          }
+          $objRestricaoDTO = new TipoProcedRestricaoDTO();
+          $objRestricaoDTO->setNumIdOrgao($objOrgaoDTORestricao->getNumIdOrgao());
+          $objRestricaoDTO->setNumIdUnidade($objUnidadeDTORestricao->getNumIdUnidade());
+          $arrObjTipoProcedRestricaoDTO[] = $objRestricaoDTO;
+        }
+      }
+    }
+
+    // Niveis de acesso permitidos (obrigatorio pelo menos um)
+    $arrTokensNiveis = $this->parseListaPontoVirgula($strNiveisPermitidos);
+    if (count($arrTokensNiveis) === 0) {
+      throw new InfraException('Níveis de acesso permitidos não informados.');
+    }
+    $arrObjNivelAcessoPermitidoDTO = array();
+    foreach ($arrTokensNiveis as $strTokenNivel) {
+      $objNivelDTO = new NivelAcessoPermitidoDTO();
+      $objNivelDTO->setNumIdNivelAcessoPermitido(null);
+      $objNivelDTO->setStrStaNivelAcesso($this->resolverStaNivelAcesso($strTokenNivel));
+      $arrObjNivelAcessoPermitidoDTO[] = $objNivelDTO;
+    }
+
+    if ($strNivelSugerido === '') {
+      throw new InfraException('Sugestão para o nível de acesso não informada.');
+    }
+    $strStaNivelAcessoSugestao = $this->resolverStaNivelAcesso($strNivelSugerido);
+
+    $numIdHipoteseLegalSugestao = null;
+    if ($strHipoteseLegal !== '') {
+      $numIdHipoteseLegalSugestao = $this->resolverHipoteseLegal($strHipoteseLegal)->getNumIdHipoteseLegal();
+    }
+
+    $objTipoProcedimentoDTO = new TipoProcedimentoDTO();
+    $objTipoProcedimentoDTO->setNumIdTipoProcedimento(null);
+    $objTipoProcedimentoDTO->setNumIdHipoteseLegalSugestao($numIdHipoteseLegalSugestao);
+    $objTipoProcedimentoDTO->setNumIdPlanoTrabalho(null);
+    $objTipoProcedimentoDTO->setStrNome($strNome);
+    $objTipoProcedimentoDTO->setStrDescricao($strDescricao !== '' ? $strDescricao : null);
+    $objTipoProcedimentoDTO->setStrStaNivelAcessoSugestao($strStaNivelAcessoSugestao);
+    $objTipoProcedimentoDTO->setStrStaGrauSigiloSugestao($strGrauSigilo !== '' ? $strGrauSigilo : null);
+    $objTipoProcedimentoDTO->setStrSinAtivo('S');
+    $objTipoProcedimentoDTO->setStrSinInterno($this->resolverSinalizadorSimNao($strInternoSistema));
+    $objTipoProcedimentoDTO->setStrSinOuvidoria($strSinOuvidoria);
+    $objTipoProcedimentoDTO->setStrSinOuvidoriaAnonimo($this->resolverSinalizadorSimNao($strContatoAnonimo));
+    $objTipoProcedimentoDTO->setStrSinIndividual($this->resolverSinalizadorSimNao($strProcessoUnico));
+    $objTipoProcedimentoDTO->setArrObjRelTipoProcedimentoAssuntoDTO($arrObjRelTipoProcedimentoAssuntoDTO);
+    $objTipoProcedimentoDTO->setArrObjTipoProcedRestricaoDTO($arrObjTipoProcedRestricaoDTO);
+    $objTipoProcedimentoDTO->setArrObjNivelAcessoPermitidoDTO($arrObjNivelAcessoPermitidoDTO);
+
+    $objTipoProcedimentoRN->cadastrarRN0265($objTipoProcedimentoDTO);
+
+    return $this->linhaResultado($numLinha, self::STA_OK, 'Tipo de Processo "' . $strNome . '" cadastrado.');
+  }
+
+  /**
+   * Texto do erro de uma linha. Recebe a excecao que sai de processarXLinha(): o
+   * InfraRN::__call() a reembrulha numa InfraException de mensagem generica, e o motivo real
+   * esta em getPrevious(). Uma InfraException lancada via lancarValidacoes()/lancarValidacao()
+   * (padrao das RN nativas para erro de regra de negocio) tem getMessage() VAZIO: o texto fica
+   * em getArrObjInfraValidacao(), exposto por __toString(). Sem isso o erro apareceria na
+   * linha do relatorio sem mensagem.
+   */
   private function obterMensagemErro(Exception $e): string {
-    $strMensagem = ($e instanceof InfraException) ? (string)$e : $e->getMessage();
-    return $strMensagem !== '' ? $strMensagem : get_class($e);
+    $objErro = $e->getPrevious() ?? $e;
+    $strMensagem = ($objErro instanceof InfraException) ? (string)$objErro : $objErro->getMessage();
+    return $strMensagem !== '' ? $strMensagem : get_class($objErro);
   }
 
   private function linhaResultado(int $numLinha, string $strStatus, string $strMensagem): array {

@@ -51,6 +51,10 @@ $strTipoCarga = PaginaSEI::POST('selTipoCarga');
 // toggle em tempo real e feito por JS (trocarTipoCarga()), mesma tecnica.
 $strDisplayTabelaAssuntos = ($strTipoCarga === 'assuntos') ? '' : 'display:none;';
 
+// Limite de tamanho do arquivo (ver CargaEmLoteRN::obterLimiteUploadMbConectado()): usado no
+// aviso da tela, na validacao antes do envio (JS) e na validacao do servidor (ETAPA 1).
+$numLimiteUploadMb = (new CargaEmLoteRN())->obterLimiteUploadMb();
+
 // Lista de Tabelas de Assuntos existentes, para a carga de Assuntos poder escolher uma
 // tabela diferente da atual (ex.: orgao preparando uma tabela nova, ainda nao promovida a
 // atual) - por Nome (unico, validado nativamente em TabelaAssuntosRN), nunca por id interno.
@@ -80,6 +84,10 @@ try {
 
     if (!isset($_FILES['filArquivo']) || $_FILES['filArquivo']['error'] === UPLOAD_ERR_NO_FILE) {
       throw new InfraException('Selecione um arquivo .csv, .xlsx ou .ods.');
+    }
+
+    if ($_FILES['filArquivo']['size'] > $numLimiteUploadMb * 1024 * 1024) {
+      throw new InfraException('O arquivo tem ' . round($_FILES['filArquivo']['size'] / 1048576, 1) . ' Mb e excede o limite de ' . $numLimiteUploadMb . ' Mb (parâmetro SEI_TAM_MB_DOC_EXTERNO).');
     }
 
     // processarUpload() nao retorna valor: da echo direto no resultado (pensado para ser
@@ -200,6 +208,8 @@ PaginaSEI::getInstance()->fecharStyle();
 PaginaSEI::getInstance()->montarJavaScript();
 PaginaSEI::getInstance()->abrirJavaScript();
 ?>
+  var numLimiteUploadMb = <?=$numLimiteUploadMb?>;
+
   function trocarTipoCarga() {
     if (document.getElementById('selTipoCarga').value == 'assuntos') {
       document.getElementById('divTabelaAssuntos').style.display = 'block';
@@ -216,6 +226,12 @@ PaginaSEI::getInstance()->abrirJavaScript();
     }
     if (document.getElementById('filArquivo').value == '') {
       alert('Selecione um arquivo .csv, .xlsx ou .ods.');
+      document.getElementById('filArquivo').focus();
+      return false;
+    }
+    var arqSelecionado = document.getElementById('filArquivo').files[0];
+    if (arqSelecionado && arqSelecionado.size > numLimiteUploadMb * 1024 * 1024) {
+      alert('O arquivo tem ' + (arqSelecionado.size / 1048576).toFixed(1) + ' Mb e excede o limite de ' + numLimiteUploadMb + ' Mb.');
       document.getElementById('filArquivo').focus();
       return false;
     }
@@ -285,7 +301,7 @@ PaginaSEI::getInstance()->abrirBody($strTitulo);
     quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento é
     feito em lotes de <?=CargaEmLoteRN::TAMANHO_LOTE?> - esta tela se atualizará
     periodicamente com o progresso, sozinha, até concluir. Não feche nem atualize a
-    janela manualmente enquanto isso.</p>
+    janela manualmente enquanto isso. Tamanho máximo do arquivo: <?=$numLimiteUploadMb?> Mb.</p>
     </div>
 
     <?
