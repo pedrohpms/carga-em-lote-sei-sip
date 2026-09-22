@@ -31,7 +31,9 @@ class MdCelAtualizadorSipRN extends InfraRN
     private $nomeParametroModulo = 'MD_CEL_VERSAO';
     private $historicoVersoes = ['2.0.0'];
 
-    private $strPerfil = 'MD_CEL';
+    // Nome exibido na lista de perfis. So o identificador tecnico (recurso, parametro,
+    // regra de auditoria) usa o prefixo MD_CEL - o nome do perfil pode ser legivel.
+    private $strPerfil = 'Carga em Lote';
     private $strRecursoTela = 'md_cel_lote';
 
     // Recurso => descrição. Um por operação: quem monta o perfil escolhe quais cargas cada operador roda.
@@ -159,7 +161,7 @@ class MdCelAtualizadorSipRN extends InfraRN
     }
 
     /**
-     * Versão 2.0.0: perfil MD_CEL, recursos por operação, itens de menu e regra de auditoria, nos
+     * Versão 2.0.0: perfil Carga em Lote, recursos por operação, itens de menu e regra de auditoria, nos
      * sistemas SEI (menu dentro de Administração) e SIP (menu na raiz, com ícone). Idempotente:
      * cada objeto só é criado se ainda não existir.
      */

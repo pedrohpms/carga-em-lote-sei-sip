@@ -133,8 +133,7 @@ try {
       $arrEstado['offset'] += max($arrRetornoLote['processadas'], ($arrRetornoLote['processadas'] === 0) ? $arrEstado['total'] : 0);
 
       // Resumo separado por sub-operacao (ex.: "usuario(s)" e "permissao(oes)") em vez de um
-      // total unico misturando as duas - achado do usuario testando contra o container real
-      // ("400 cadastrado(s)" quando eram na verdade 200 usuarios + 200 permissoes).
+      // total unico misturando as duas. (ex.: "400 cadastrado(s)" quando eram na verdade 200 usuarios + 200 permissoes).
       if ($arrEstado['resumoPorOperacao'] === null) {
         $arrEstado['resumoPorOperacao'] = $arrRetornoLote['resumoPorOperacao'];
       } else {

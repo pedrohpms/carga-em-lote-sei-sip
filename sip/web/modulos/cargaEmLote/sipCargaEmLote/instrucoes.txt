@@ -38,7 +38,7 @@ Instrucoes para instalacao do modulo Carga em Lote (SIP)
     renomeia o perfil e o recurso antigos em vez de recriar, e as permissoes ja concedidas
     continuam valendo.
 
-7 - atribuir o perfil MD_CEL (sistema SIP) a quem for operar as cargas do SIP (SIP > Perfis >
+7 - atribuir o perfil "Carga em Lote" (sistema SIP) a quem for operar as cargas do SIP (SIP > Perfis >
     Montar, ou direto no cadastro do usuario). O perfil traz todas as cargas. Para liberar so
     algumas, crie outro perfil com o recurso da tela (md_cel_lote) e so os recursos das
     cargas desejadas:

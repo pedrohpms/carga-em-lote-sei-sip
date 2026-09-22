@@ -41,7 +41,7 @@ Este projeto nasceu como uma tentativa de resolver o mesmo problema de forma mai
 <a name="a-quem-se-destina"></a>
 ## 👨‍🔧 A quem se destina
 
-Usuários com **perfil de Administração do SEI/SIP** — o mesmo público das macros originais. Diferente delas, aqui o acesso é controlado por um perfil próprio (`MD_CEL`, um em cada sistema), criado pelo script de instalação e atribuído manualmente a quem for operar as cargas. Cada carga tem o seu próprio recurso, então dá para liberar só algumas (ver [Permissões por carga](#permissoes-por-carga)).
+Usuários com **perfil de Administração do SEI/SIP** — o mesmo público das macros originais. Diferente delas, aqui o acesso é controlado por um perfil próprio (`Carga em Lote`, um em cada sistema), criado pelo script de instalação e atribuído manualmente a quem for operar as cargas. Cada carga tem o seu próprio recurso, então dá para liberar só algumas (ver [Permissões por carga](#permissoes-por-carga)).
 
 > [!WARNING]
 > Estes módulos alteram diretamente cadastros administrativos do SEI/SIP. Antes de usar em produção:
@@ -67,11 +67,11 @@ php /opt/sei/scripts/sei_atualizar_versao_modulo_cel.php
 php /opt/sip/scripts/sip_atualizar_versao_modulo_cel.php
 ```
 
-3. Atribuir o perfil `MD_CEL` a quem for operar as cargas: o do sistema SEI para as cargas do SEI e o do sistema SIP para as cargas do SIP.
+3. Atribuir o perfil `Carga em Lote` a quem for operar as cargas: o do sistema SEI para as cargas do SEI e o do sistema SIP para as cargas do SIP.
 
-O script do SEI só registra a versão (`MD_CEL_VERSAO`), porque o módulo não tem tabelas. O script do SIP cria, nos dois sistemas, o perfil, a tela, o item de menu, um recurso por carga e a regra de auditoria `MD_CEL`. Os dois são idempotentes: rodar de novo termina com a mensagem de que a versão já está instalada.
+O script do SEI só registra a versão (`MD_CEL_VERSAO`), porque o módulo não tem tabelas. O script do SIP cria, nos dois sistemas, o perfil `Carga em Lote`, a tela, o item de menu, um recurso por carga e a regra de auditoria `MD_CEL` (identificador técnico interno, não aparece na lista de perfis). Os dois são idempotentes: rodar de novo termina com a mensagem de que a versão já está instalada.
 
-**Atualizando da versão 1.0.0.** O script do SIP renomeia o perfil e o recurso da versão anterior em vez de recriá-los. As permissões já concedidas e o item de menu continuam valendo. Antes de rodar, troque na chave `Modulos` os nomes antigos das classes (`SeiCargaEmLoteIntegracao` e `SipCargaEmLoteIntegracao`) pelos novos e remova os arquivos antigos das pastas dos módulos (`*Integracao.php` antigos, `rn/CargaEmLoteRN.php`, `web/carga_em_lote_form.php` e `scripts/instalar.php`). Os parâmetros `CARGA_EM_LOTE_VERSAO` e `CARGA_EM_LOTE_SEI_VERSAO` ficam sem uso no banco do SIP e podem ser removidos à mão.
+**Atualizando da versão 1.0.0.** O script do SIP renomeia o perfil (para `Carga em Lote`) e o recurso da versão anterior em vez de recriá-los. As permissões já concedidas e o item de menu continuam valendo. Antes de rodar, troque na chave `Modulos` os nomes antigos das classes (`SeiCargaEmLoteIntegracao` e `SipCargaEmLoteIntegracao`) pelos novos e remova os arquivos antigos das pastas dos módulos (`*Integracao.php` antigos, `rn/CargaEmLoteRN.php`, `web/carga_em_lote_form.php` e `scripts/instalar.php`). Os parâmetros `CARGA_EM_LOTE_VERSAO` e `CARGA_EM_LOTE_SEI_VERSAO` ficam sem uso no banco do SIP e podem ser removidos à mão.
 
 > [!IMPORTANT]
 > Depois de atribuir o perfil a um usuário, é preciso fazer **logout/login** para o item de menu aparecer — o menu de cada sistema é montado uma única vez no login e fica guardado na sessão (comportamento genérico do framework, não peculiaridade destes módulos).
@@ -118,7 +118,7 @@ Arquivos com muitas linhas são processados em lotes de `MdCelSeiRN::TAMANHO_LOT
 <a name="permissoes-por-carga"></a>
 ### Permissões por carga
 
-O perfil `MD_CEL` traz todas as cargas do sistema. Para liberar só algumas, crie outro perfil com o recurso da tela (`md_cel_lote`) e apenas os recursos das cargas desejadas. A tela mostra só as cargas que o perfil do operador permite, e cada chamada valida o recurso de novo e grava a trilha de auditoria (arquivo e faixa de linhas, nunca o conteúdo das linhas).
+O perfil `Carga em Lote` traz todas as cargas do sistema. Para liberar só algumas, crie outro perfil com o recurso da tela (`md_cel_lote`) e apenas os recursos das cargas desejadas. A tela mostra só as cargas que o perfil do operador permite, e cada chamada valida o recurso de novo e grava a trilha de auditoria (arquivo e faixa de linhas, nunca o conteúdo das linhas).
 
 | Sistema | Recurso | Carga |
 |---|---|---|
