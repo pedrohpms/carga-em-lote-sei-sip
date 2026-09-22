@@ -20,7 +20,7 @@ class MdCelSipIntegracao extends SipIntegracao {
   }
 
   public function getVersao() {
-    return '2.0.0';
+    return '0.0.2';
   }
 
   public function getInstituicao() {

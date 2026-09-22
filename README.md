@@ -252,16 +252,18 @@ Unidade acima (sempre sobrescreve, campo vazio preserva o valor existente).
 > [!NOTE]
 > As colunas 11, 12 e 14 (Cargo, Categoria, Título) exigem que o valor já exista cadastrado no
 > sistema — a carga não cria esses domínios automaticamente. Se o valor informado não for
-> encontrado, a linha reporta erro indicando onde cadastrá-lo antes.
+> encontrado, a linha reporta erro indicando onde cadastrá-lo antes. Categoria e Título vêm
+> vazios em toda instalação nova do SEI (sem nenhum registro nativo); o arquivo de exemplo por
+> isso deixa as duas colunas em branco e só preenche Cargo, que tem registros nativos.
 
 **Exemplo** (linhas de `exemploContatoUsuarios.csv`):
 
-| siglaUsuario | generoUsuario | usaEnderecoDoOrgao | cidadeUsuario | cargoUsuario | categoriaUsuario | dataNascUsuario | telefoneComercialUsuario |
-|---|---|---|---|---|---|---|---|
-| tertuliano.gongora | M | N | Rio de Janeiro | Coordenador | Servidor Público Federal | 31/12/1978 | (21) 2345-6789 |
-| norberto.camarinha | F | N | São Paulo | | Terceirizado | 15/03/1990 | (11) 3456-7890 |
-| feliciana.travassos | F | N | Porto Alegre | Analista Técnico-Administrativa | Servidor Público Federal | 07/07/1991 | (51) 3344-7788 |
-| querubina.espinosa | F | S | Florianópolis | Coordenadora | Servidor Público Federal | 14/12/1985 | (48) 3344-1122 |
+| siglaUsuario | generoUsuario | usaEnderecoDoOrgao | cidadeUsuario | cargoUsuario | dataNascUsuario | telefoneComercialUsuario |
+|---|---|---|---|---|---|---|
+| tertuliano.gongora | M | N | Rio de Janeiro | Coordenador | 31/12/1978 | (21) 2345-6789 |
+| belarmina.batatinha | F | N | São Paulo | | 15/03/1990 | (11) 3456-7890 |
+| feliciana.travassos | F | N | Porto Alegre | Diretora | 07/07/1991 | (51) 3344-7788 |
+| querubina.espinosa | F | S | Florianópolis | Coordenadora | 14/12/1985 | (48) 3344-1122 |
 
 <a name="sei-assuntos"></a>
 ## 🗄️ SEI — Assuntos
@@ -328,6 +330,8 @@ Validado ponta a ponta contra um ambiente de laboratório completo (SEI 5.0.5 + 
 containers Docker), incluindo um ciclo de reinstalação do zero e cargas de centenas de linhas
 por operação, para exercitar tanto o caminho feliz quanto o processamento em lotes.
 
-A versão 2.0.0 (classes `MdCel`, recursos por carga, scripts de release e regra de auditoria) foi validada no mesmo ambiente, incluindo a atualização a partir da 1.0.0 com as permissões já concedidas e um perfil restrito a uma única carga no SEI. O perfil restrito não foi testado no SIP.
+A versão 0.0.2 — pré-release, ainda sem uso em produção — traz classes `MdCel`, recursos por carga, scripts de release e regra de auditoria; foi validada no mesmo ambiente, incluindo a atualização a partir da 1.0.0 com as permissões já concedidas e um perfil restrito a uma única carga no SEI. O perfil restrito não foi testado no SIP.
+
+Os exemplos usam só dados que já vêm na instalação padrão do SEI (órgão, unidades e usuários são criados pelo próprio módulo; cargo, assunto e hipótese legal são os nativos). Nenhum arquivo depende de cadastro manual prévio — validado contra um banco recém-instalado, sem nenhum ajuste administrativo antes da carga.
 
 A validação foi feita somente em MySQL. O instalador declara suporte a Oracle, SQL Server e PostgreSQL, mas esses bancos não foram testados.

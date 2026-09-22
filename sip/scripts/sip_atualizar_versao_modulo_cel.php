@@ -12,7 +12,7 @@
  * mod-sei-ia): classe *AtualizadorSipRN extends InfraRN, switch sobre a versão instalada e um
  * método instalarv* por versão. atualizarNumeroVersao() é a ÚLTIMA ação de cada instalarv*.
  *
- * A versão 2.0.0 substitui o instalador anterior (scripts/instalar.php, versão 1.0.0, parâmetros
+ * A versão 0.0.2 substitui o instalador anterior (scripts/instalar.php, versão 1.0.0, parâmetros
  * CARGA_EM_LOTE_VERSAO e CARGA_EM_LOTE_SEI_VERSAO). Se encontrar o perfil e o recurso da versão
  * anterior, RENOMEIA (não recria), preservando as permissões já concedidas e o item de menu. Não
  * apaga nada: os dois parâmetros antigos ficam no banco, sem uso, e podem ser removidos à mão.
@@ -26,10 +26,10 @@ class MdCelAtualizadorSipRN extends InfraRN
 {
 
     private $numSeg = 0;
-    private $versaoAtualDesteModulo = '2.0.0';
+    private $versaoAtualDesteModulo = '0.0.2';
     private $nomeDesteModulo = 'MÓDULO CARGA EM LOTE';
     private $nomeParametroModulo = 'MD_CEL_VERSAO';
-    private $historicoVersoes = ['2.0.0'];
+    private $historicoVersoes = ['0.0.2'];
 
     // Nome exibido na lista de perfis. So o identificador tecnico (recurso, parametro,
     // regra de auditoria) usa o prefixo MD_CEL - o nome do perfil pode ser legivel.
@@ -142,7 +142,7 @@ class MdCelAtualizadorSipRN extends InfraRN
 
             switch ($strVersaoModulo) {
                 case '':
-                    $this->instalarv200();
+                    $this->instalarv002();
                     break;
                 default:
                     $this->finalizar('A VERSÃO MAIS ATUAL DO ' . $this->nomeDesteModulo . ' (v' . $this->versaoAtualDesteModulo . ') JÁ ESTÁ INSTALADA.');
@@ -161,13 +161,13 @@ class MdCelAtualizadorSipRN extends InfraRN
     }
 
     /**
-     * Versão 2.0.0: perfil Carga em Lote, recursos por operação, itens de menu e regra de auditoria, nos
+     * Versão 0.0.2: perfil Carga em Lote, recursos por operação, itens de menu e regra de auditoria, nos
      * sistemas SEI (menu dentro de Administração) e SIP (menu na raiz, com ícone). Idempotente:
      * cada objeto só é criado se ainda não existir.
      */
-    protected function instalarv200()
+    protected function instalarv002()
     {
-        $nmVersao = '2.0.0';
+        $nmVersao = '0.0.2';
 
         $this->logar('EXECUTANDO A INSTALAÇÃO/ATUALIZAÇÃO DA VERSÃO ' . $nmVersao . ' DO ' . $this->nomeDesteModulo . ' NA BASE DO SIP');
 
