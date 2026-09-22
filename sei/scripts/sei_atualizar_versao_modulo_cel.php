@@ -20,10 +20,10 @@ class MdCelAtualizadorSeiRN extends InfraRN
 {
 
     private $numSeg = 0;
-    private $versaoAtualDesteModulo = '2.0.0';
+    private $versaoAtualDesteModulo = '0.1.1';
     private $nomeDesteModulo = 'MODULO CARGA EM LOTE';
     private $nomeParametroModulo = 'MD_CEL_VERSAO';
-    private $historicoVersoes = ['2.0.0'];
+    private $historicoVersoes = ['0.1.1'];
 
     public function __construct()
     {
@@ -118,7 +118,7 @@ class MdCelAtualizadorSeiRN extends InfraRN
 
             switch ($strVersaoModulo) {
                 case '':
-                    $this->instalarv200();
+                    $this->instalarv011();
                     break;
                 default:
                     $this->finalizar('A VERSAO MAIS ATUAL DO ' . $this->nomeDesteModulo . ' (v' . $this->versaoAtualDesteModulo . ') JA ESTA INSTALADA.');
@@ -137,13 +137,13 @@ class MdCelAtualizadorSeiRN extends InfraRN
     }
 
     /**
-     * Versao 2.0.0. O modulo nao tem tabelas nem DTOs proprios: este script so registra a versao
+     * Versao 0.1.1. O modulo nao tem tabelas nem DTOs proprios: este script so registra a versao
      * em infra_parametro (MD_CEL_VERSAO) no banco do SEI. Perfil, recursos, menu e regra de
      * auditoria ficam no banco do SIP: ver sip/scripts/sip_atualizar_versao_modulo_cel.php.
      */
-    protected function instalarv200()
+    protected function instalarv011()
     {
-        $nmVersao = '2.0.0';
+        $nmVersao = '0.1.1';
 
         $this->logar('EXECUTANDO A INSTALACAO/ATUALIZACAO DA VERSAO ' . $nmVersao . ' DO ' . $this->nomeDesteModulo . ' NA BASE DO SEI');
 

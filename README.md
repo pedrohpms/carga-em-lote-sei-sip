@@ -41,7 +41,7 @@ Este projeto nasceu como uma tentativa de resolver o mesmo problema de forma mai
 <a name="a-quem-se-destina"></a>
 ## 👨‍🔧 A quem se destina
 
-Usuários com **perfil de Administração do SEI/SIP** — o mesmo público das macros originais. Diferente delas, aqui o acesso é controlado por um perfil próprio (`MD_CEL`, um em cada sistema), criado pelo script de instalação e atribuído manualmente a quem for operar as cargas. Cada carga tem o seu próprio recurso, então dá para liberar só algumas (ver [Permissões por carga](#permissoes-por-carga)).
+Usuários com **perfil de Administração do SEI/SIP** — o mesmo público das macros originais. Diferente delas, aqui o acesso é controlado por um perfil próprio (`Carga em Lote`, um em cada sistema), criado pelo script de instalação e atribuído manualmente a quem for operar as cargas. Cada carga tem o seu próprio recurso, então dá para liberar só algumas (ver [Permissões por carga](#permissoes-por-carga)).
 
 > [!WARNING]
 > Estes módulos alteram diretamente cadastros administrativos do SEI/SIP. Antes de usar em produção:
@@ -67,11 +67,11 @@ php /opt/sei/scripts/sei_atualizar_versao_modulo_cel.php
 php /opt/sip/scripts/sip_atualizar_versao_modulo_cel.php
 ```
 
-3. Atribuir o perfil `MD_CEL` a quem for operar as cargas: o do sistema SEI para as cargas do SEI e o do sistema SIP para as cargas do SIP.
+3. Atribuir o perfil `Carga em Lote` a quem for operar as cargas, em `SIP > Permissões > Administradas` (não em `SIP > Perfis > Montar`, que serve para incluir recursos num perfil, já feito pelo script): o do sistema SEI para as cargas do SEI e o do sistema SIP para as cargas do SIP.
 
-O script do SEI só registra a versão (`MD_CEL_VERSAO`), porque o módulo não tem tabelas. O script do SIP cria, nos dois sistemas, o perfil, a tela, o item de menu, um recurso por carga e a regra de auditoria `MD_CEL`. Os dois são idempotentes: rodar de novo termina com a mensagem de que a versão já está instalada.
+O script do SEI só registra a versão (`MD_CEL_VERSAO`), porque o módulo não tem tabelas. O script do SIP cria, nos dois sistemas, o perfil `Carga em Lote`, a tela, o item de menu, um recurso por carga e a regra de auditoria `MD_CEL` (identificador técnico interno, não aparece na lista de perfis). Os dois são idempotentes: rodar de novo termina com a mensagem de que a versão já está instalada.
 
-**Atualizando da versão 1.0.0.** O script do SIP renomeia o perfil e o recurso da versão anterior em vez de recriá-los. As permissões já concedidas e o item de menu continuam valendo. Antes de rodar, troque na chave `Modulos` os nomes antigos das classes (`SeiCargaEmLoteIntegracao` e `SipCargaEmLoteIntegracao`) pelos novos e remova os arquivos antigos das pastas dos módulos (`*Integracao.php` antigos, `rn/CargaEmLoteRN.php`, `web/carga_em_lote_form.php` e `scripts/instalar.php`). Os parâmetros `CARGA_EM_LOTE_VERSAO` e `CARGA_EM_LOTE_SEI_VERSAO` ficam sem uso no banco do SIP e podem ser removidos à mão.
+**Atualizando da versão 1.0.0.** O script do SIP renomeia o perfil (para `Carga em Lote`) e o recurso da versão anterior em vez de recriá-los. As permissões já concedidas e o item de menu continuam valendo. Antes de rodar, troque na chave `Modulos` os nomes antigos das classes (`SeiCargaEmLoteIntegracao` e `SipCargaEmLoteIntegracao`) pelos novos e remova os arquivos antigos das pastas dos módulos (`*Integracao.php` antigos, `rn/CargaEmLoteRN.php`, `web/carga_em_lote_form.php` e `scripts/instalar.php`). Os parâmetros `CARGA_EM_LOTE_VERSAO` e `CARGA_EM_LOTE_SEI_VERSAO` ficam sem uso no banco do SIP e podem ser removidos à mão.
 
 > [!IMPORTANT]
 > Depois de atribuir o perfil a um usuário, é preciso fazer **logout/login** para o item de menu aparecer — o menu de cada sistema é montado uma única vez no login e fica guardado na sessão (comportamento genérico do framework, não peculiaridade destes módulos).
@@ -118,7 +118,7 @@ Arquivos com muitas linhas são processados em lotes de `MdCelSeiRN::TAMANHO_LOT
 <a name="permissoes-por-carga"></a>
 ### Permissões por carga
 
-O perfil `MD_CEL` traz todas as cargas do sistema. Para liberar só algumas, crie outro perfil com o recurso da tela (`md_cel_lote`) e apenas os recursos das cargas desejadas. A tela mostra só as cargas que o perfil do operador permite, e cada chamada valida o recurso de novo e grava a trilha de auditoria (arquivo e faixa de linhas, nunca o conteúdo das linhas).
+O perfil `Carga em Lote` traz todas as cargas do sistema. Para liberar só algumas, crie outro perfil com o recurso da tela (`md_cel_lote`) e apenas os recursos das cargas desejadas. A tela mostra só as cargas que o perfil do operador permite, e cada chamada valida o recurso de novo e grava a trilha de auditoria (arquivo e faixa de linhas, nunca o conteúdo das linhas).
 
 | Sistema | Recurso | Carga |
 |---|---|---|
@@ -171,11 +171,11 @@ Cadastra unidades administrativas e posiciona cada uma na hierarquia, numa únic
 
 | Seq. | orgaoUnidade | siglaUnidade | descricaoUnidade | superiorNaHierarquia | emailUnidade | usaEnderecoDoOrgao? |
 |---|---|---|---|---|---|---|
-| 1 | GOV-CR | GABIN | Gabinete | | governador@cariris.gov.br | S |
-| 2 | GOV-CR | ASIMP | Assessoria de Imprensa | GABIN | imprensa@cariris.gov.br | S |
-| 5 | GOV-CR | SETIN | Secretaria de Transformação Digital e Inovação | | setin@cariris.gov.br | N |
-| 6 | GOV-CR | SUTEC | Subsecretaria de Tecnologia e Infraestrutura | SETIN | sutec@cariris.gov.br | N |
-| 13 | GOV-CR | COIRE | Coordenadoria de Infraestrutura e Redes | SUTEC | coire@cariris.gov.br | N |
+| 1 | ABC | GABIN | Gabinete | | governador@abc.gov.br | S |
+| 2 | ABC | ASIMP | Assessoria de Imprensa | GABIN | imprensa@abc.gov.br | S |
+| 5 | ABC | SETIN | Secretaria de Transformação Digital e Inovação | | setin@abc.gov.br | N |
+| 6 | ABC | SUTEC | Subsecretaria de Tecnologia e Infraestrutura | SETIN | sutec@abc.gov.br | N |
+| 13 | ABC | COIRE | Coordenadoria de Infraestrutura e Redes | SUTEC | coire@abc.gov.br | N |
 
 <a name="sip-usuarios"></a>
 ## 🙋 SIP — Usuários e Primeiras Permissões
@@ -200,10 +200,10 @@ Cadastra usuários e concede a primeira permissão de cada um, numa única carga
 
 | Index | orgao | sigla | nome | cpf | unidadePrimeiraPermissao | perfilPrimeiraPermissao |
 |---|---|---|---|---|---|---|
-| 1 | ANITEC | leocadio.macambira | Leocádio Macambira | 118.229.998-98 | PRESI | Básico |
-| 2 | ANITEC | tertuliano.gongora | Tertuliano Gongora | 124.039.082-31 | PROT | Básico |
-| 3 | ANITEC | belarmina.batatinha | Belarmina Batatinha | 147.551.240-69 | PROT | Colaborador (Básico sem Assinatura) |
-| 11 | ANITEC | norberto.camarinha | Norberto Camarinha *(nomeSocial: Zildette Brazil)* | 951.628.492-27 | PROT | Colaborador (Básico sem Assinatura) |
+| 1 | ABC | leocadio.macambira | Leocádio Macambira | 118.229.998-98 | GABIN | Básico |
+| 2 | ABC | tertuliano.gongora | Tertuliano Gongora | 124.039.082-31 | SEADM | Básico |
+| 3 | ABC | belarmina.batatinha | Belarmina Batatinha | 147.551.240-69 | SEADM | Colaborador (Básico sem Assinatura) |
+| 11 | ABC | norberto.camarinha | Norberto Camarinha *(nomeSocial: Zildette Brazil)* | 951.628.492-27 | SEADM | Colaborador (Básico sem Assinatura) |
 
 ---
 
@@ -215,8 +215,9 @@ telefone, site, CNPJ e lista de e-mails. **Operação de atualização**: sempre
 reporta "OK (atualizado)" — não existe "pulado" nesta carga. Campo vazio na planilha preserva
 o valor já existente.
 
-**Colunas**: usa o **mesmo arquivo** `exemploUnidades.csv` da carga de Unidades e Hierarquia
-(SIP), consumindo as colunas que aquela carga não usa (5, 6-15 — ver tabela acima). Quando a
+**Colunas**: usa o **mesmo conteúdo** de `exemploUnidades.csv` (SIP), empacotado neste módulo
+como `exemploContatoUnidades.csv`, consumindo as colunas que a carga do SIP não usa (5, 6-15 —
+ver tabela acima). Quando a
 coluna 6 (`usaEnderecoDoOrgao?`) é `S`, os campos de endereço próprio (7-12) podem ficar em
 branco.
 
@@ -251,16 +252,18 @@ Unidade acima (sempre sobrescreve, campo vazio preserva o valor existente).
 > [!NOTE]
 > As colunas 11, 12 e 14 (Cargo, Categoria, Título) exigem que o valor já exista cadastrado no
 > sistema — a carga não cria esses domínios automaticamente. Se o valor informado não for
-> encontrado, a linha reporta erro indicando onde cadastrá-lo antes.
+> encontrado, a linha reporta erro indicando onde cadastrá-lo antes. Categoria e Título vêm
+> vazios em toda instalação nova do SEI (sem nenhum registro nativo); o arquivo de exemplo por
+> isso deixa as duas colunas em branco e só preenche Cargo, que tem registros nativos.
 
 **Exemplo** (linhas de `exemploContatoUsuarios.csv`):
 
-| siglaUsuario | generoUsuario | usaEnderecoDoOrgao | cidadeUsuario | cargoUsuario | categoriaUsuario | dataNascUsuario | telefoneComercialUsuario |
-|---|---|---|---|---|---|---|---|
-| tertuliano.gongora | M | N | Rio de Janeiro | Coordenador | Servidor Público Federal | 31/12/1978 | (21) 2345-6789 |
-| zildette.brazil | F | N | São Paulo | | Terceirizado | 15/03/1990 | (11) 3456-7890 |
-| feliciana.travassos | F | N | Porto Alegre | Analista Técnico-Administrativa | Servidor Público Federal | 07/07/1991 | (51) 3344-7788 |
-| querubina.espinosa | F | S | Florianópolis | Coordenadora | Servidor Público Federal | 14/12/1985 | (48) 3344-1122 |
+| siglaUsuario | generoUsuario | usaEnderecoDoOrgao | cidadeUsuario | cargoUsuario | dataNascUsuario | telefoneComercialUsuario |
+|---|---|---|---|---|---|---|
+| tertuliano.gongora | M | N | Rio de Janeiro | Coordenador | 31/12/1978 | (21) 2345-6789 |
+| belarmina.batatinha | F | N | São Paulo | | 15/03/1990 | (11) 3456-7890 |
+| feliciana.travassos | F | N | Porto Alegre | Diretora | 07/07/1991 | (51) 3344-7788 |
+| querubina.espinosa | F | S | Florianópolis | Coordenadora | 14/12/1985 | (48) 3344-1122 |
 
 <a name="sei-assuntos"></a>
 ## 🗄️ SEI — Assuntos
@@ -313,7 +316,7 @@ Cadastra tipos de processo, com assuntos sugeridos, restrições de órgão/unid
 
 | Nome | sugestaoDeAssuntos | restringirAsUnidades | NiveisDeAcessoPermitidos | NivelDeAcessoSugerido | GrauSigilo |
 |---|---|---|---|---|---|
-| Comunicação: Serviço De Transmissão De Dados, Voz E Imagem | 073.4 | `PEN:ADMIN\|NEG;SBM:GABPREF\|SEDUC` | PUB;RES | RES | |
+| Comunicação: Serviço De Transmissão De Dados, Voz E Imagem | 073.4 | `ABC:GABIN\|SEADM` | PUB;RES | RES | |
 | Gestão de Contrato: Cadastramento De Fornecedores | 030.02 | | PUB;RES;SIG | SIG | R |
 | Capacitação: Contratação de curso com ônus à Instituição | 028.21 | | PUB | PUB | |
 | Pessoal: Licenças | 023.3 | | SIG | SIG | S |
@@ -327,6 +330,8 @@ Validado ponta a ponta contra um ambiente de laboratório completo (SEI 5.0.5 + 
 containers Docker), incluindo um ciclo de reinstalação do zero e cargas de centenas de linhas
 por operação, para exercitar tanto o caminho feliz quanto o processamento em lotes.
 
-A versão 2.0.0 (classes `MdCel`, recursos por carga, scripts de release e regra de auditoria) foi validada no mesmo ambiente, incluindo a atualização a partir da 1.0.0 com as permissões já concedidas e um perfil restrito a uma única carga no SEI. O perfil restrito não foi testado no SIP.
+A versão 0.1.1 — pré-release, ainda sem uso em produção — traz classes `MdCel`, recursos por carga, scripts de release e regra de auditoria; foi validada no mesmo ambiente, incluindo a atualização a partir da 1.0.0 com as permissões já concedidas e um perfil restrito a uma única carga no SEI. O perfil restrito não foi testado no SIP.
+
+Os exemplos usam só dados que já vêm na instalação padrão do SEI (órgão, unidades e usuários são criados pelo próprio módulo; cargo, assunto e hipótese legal são os nativos). Nenhum arquivo depende de cadastro manual prévio — validado contra um banco recém-instalado, sem nenhum ajuste administrativo antes da carga.
 
 A validação foi feita somente em MySQL. O instalador declara suporte a Oracle, SQL Server e PostgreSQL, mas esses bancos não foram testados.
