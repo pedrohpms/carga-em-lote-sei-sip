@@ -330,7 +330,7 @@ Validado ponta a ponta contra um ambiente de laboratório completo (SEI 5.0.5 + 
 containers Docker), incluindo um ciclo de reinstalação do zero e cargas de centenas de linhas
 por operação, para exercitar tanto o caminho feliz quanto o processamento em lotes.
 
-A versão 0.0.2 — pré-release, ainda sem uso em produção — traz classes `MdCel`, recursos por carga, scripts de release e regra de auditoria; foi validada no mesmo ambiente, incluindo a atualização a partir da 1.0.0 com as permissões já concedidas e um perfil restrito a uma única carga no SEI. O perfil restrito não foi testado no SIP.
+A versão 0.1.1 — pré-release, ainda sem uso em produção — traz classes `MdCel`, recursos por carga, scripts de release e regra de auditoria; foi validada no mesmo ambiente, incluindo a atualização a partir da 1.0.0 com as permissões já concedidas e um perfil restrito a uma única carga no SEI. O perfil restrito não foi testado no SIP.
 
 Os exemplos usam só dados que já vêm na instalação padrão do SEI (órgão, unidades e usuários são criados pelo próprio módulo; cargo, assunto e hipótese legal são os nativos). Nenhum arquivo depende de cadastro manual prévio — validado contra um banco recém-instalado, sem nenhum ajuste administrativo antes da carga.
 

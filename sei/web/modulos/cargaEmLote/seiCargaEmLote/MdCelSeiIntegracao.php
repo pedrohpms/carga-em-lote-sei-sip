@@ -27,7 +27,7 @@ class MdCelSeiIntegracao extends SeiIntegracao {
   }
 
   public function getVersao() {
-    return '0.0.2';
+    return '0.1.1';
   }
 
   public function getInstituicao() {
