@@ -71,7 +71,7 @@ php /opt/sip/scripts/sip_atualizar_versao_modulo_cel.php
 
 O script do SEI só registra a versão (`MD_CEL_VERSAO`), porque o módulo não tem tabelas. O script do SIP cria, nos dois sistemas, o perfil `Carga em Lote`, a tela, o item de menu, um recurso por carga e a regra de auditoria `MD_CEL` (identificador técnico interno, não aparece na lista de perfis). Os dois são idempotentes: rodar de novo termina com a mensagem de que a versão já está instalada.
 
-**Atualizando da versão 1.0.0.** O script do SIP renomeia o perfil (para `Carga em Lote`) e o recurso da versão anterior em vez de recriá-los. As permissões já concedidas e o item de menu continuam valendo. Antes de rodar, troque na chave `Modulos` os nomes antigos das classes (`SeiCargaEmLoteIntegracao` e `SipCargaEmLoteIntegracao`) pelos novos e remova os arquivos antigos das pastas dos módulos (`*Integracao.php` antigos, `rn/CargaEmLoteRN.php`, `web/carga_em_lote_form.php` e `scripts/instalar.php`). Os parâmetros `CARGA_EM_LOTE_VERSAO` e `CARGA_EM_LOTE_SEI_VERSAO` ficam sem uso no banco do SIP e podem ser removidos à mão.
+**Atualizando da versão 0.1.0.** O script do SIP renomeia o perfil (para `Carga em Lote`) e o recurso da versão anterior em vez de recriá-los. As permissões já concedidas e o item de menu continuam valendo. Antes de rodar, troque na chave `Modulos` os nomes antigos das classes (`SeiCargaEmLoteIntegracao` e `SipCargaEmLoteIntegracao`) pelos novos e remova os arquivos antigos das pastas dos módulos (`*Integracao.php` antigos, `rn/CargaEmLoteRN.php`, `web/carga_em_lote_form.php` e `scripts/instalar.php`). Os parâmetros `CARGA_EM_LOTE_VERSAO` e `CARGA_EM_LOTE_SEI_VERSAO` ficam sem uso no banco do SIP e podem ser removidos à mão.
 
 > [!IMPORTANT]
 > Depois de atribuir o perfil a um usuário, é preciso fazer **logout/login** para o item de menu aparecer — o menu de cada sistema é montado uma única vez no login e fica guardado na sessão (comportamento genérico do framework, não peculiaridade destes módulos).
@@ -330,7 +330,7 @@ Validado ponta a ponta contra um ambiente de laboratório completo (SEI 5.0.5 + 
 containers Docker), incluindo um ciclo de reinstalação do zero e cargas de centenas de linhas
 por operação, para exercitar tanto o caminho feliz quanto o processamento em lotes.
 
-A versão 0.1.1 — pré-release, ainda sem uso em produção — traz classes `MdCel`, recursos por carga, scripts de release e regra de auditoria; foi validada no mesmo ambiente, incluindo a atualização a partir da 1.0.0 com as permissões já concedidas e um perfil restrito a uma única carga no SEI. O perfil restrito não foi testado no SIP.
+A versão 0.1.1 — pré-release, ainda sem uso em produção — traz classes `MdCel`, recursos por carga, scripts de release e regra de auditoria; foi validada no mesmo ambiente, incluindo a atualização a partir da 0.1.0 com as permissões já concedidas e um perfil restrito a uma única carga no SEI. O perfil restrito não foi testado no SIP.
 
 Os exemplos usam só dados que já vêm na instalação padrão do SEI (órgão, unidades e usuários são criados pelo próprio módulo; cargo, assunto e hipótese legal são os nativos). Nenhum arquivo depende de cadastro manual prévio — validado contra um banco recém-instalado, sem nenhum ajuste administrativo antes da carga.
 
