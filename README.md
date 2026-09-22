@@ -67,7 +67,7 @@ php /opt/sei/scripts/sei_atualizar_versao_modulo_cel.php
 php /opt/sip/scripts/sip_atualizar_versao_modulo_cel.php
 ```
 
-3. Atribuir o perfil `Carga em Lote` a quem for operar as cargas: o do sistema SEI para as cargas do SEI e o do sistema SIP para as cargas do SIP.
+3. Atribuir o perfil `Carga em Lote` a quem for operar as cargas, em `SIP > Permissões > Administradas` (não em `SIP > Perfis > Montar`, que serve para incluir recursos num perfil, já feito pelo script): o do sistema SEI para as cargas do SEI e o do sistema SIP para as cargas do SIP.
 
 O script do SEI só registra a versão (`MD_CEL_VERSAO`), porque o módulo não tem tabelas. O script do SIP cria, nos dois sistemas, o perfil `Carga em Lote`, a tela, o item de menu, um recurso por carga e a regra de auditoria `MD_CEL` (identificador técnico interno, não aparece na lista de perfis). Os dois são idempotentes: rodar de novo termina com a mensagem de que a versão já está instalada.
 
