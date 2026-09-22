@@ -311,7 +311,7 @@ class MdCelSeiRN extends InfraRN {
 
   // ---------------------------------------------------------------------
   // Dados complementares de unidade (macro 3.dadosUnidadesSEI)
-  // Colunas do csv (mesmo exemploUnidades.csv da Sprint 1):
+  // Colunas do csv (mesmo exemploContatoUnidades.csv deste modulo / exemploUnidades.csv do SIP):
   // 0-Seq,1-orgaoUnidade,2-siglaUnidade,3-descricaoUnidade,4-superiorNaHierarquia,
   // 5-emailUnidade,6-usaEnderecoDoOrgao?,7-enderecoUnidade,8-complementoEndereco,
   // 9-bairroUnidade,10-UFUnidade,11-cidadeUnidade,12-CEPUnidade,13-CNPJUnidade,

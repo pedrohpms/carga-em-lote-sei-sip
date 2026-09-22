@@ -171,11 +171,11 @@ Cadastra unidades administrativas e posiciona cada uma na hierarquia, numa únic
 
 | Seq. | orgaoUnidade | siglaUnidade | descricaoUnidade | superiorNaHierarquia | emailUnidade | usaEnderecoDoOrgao? |
 |---|---|---|---|---|---|---|
-| 1 | GOV-CR | GABIN | Gabinete | | governador@cariris.gov.br | S |
-| 2 | GOV-CR | ASIMP | Assessoria de Imprensa | GABIN | imprensa@cariris.gov.br | S |
-| 5 | GOV-CR | SETIN | Secretaria de Transformação Digital e Inovação | | setin@cariris.gov.br | N |
-| 6 | GOV-CR | SUTEC | Subsecretaria de Tecnologia e Infraestrutura | SETIN | sutec@cariris.gov.br | N |
-| 13 | GOV-CR | COIRE | Coordenadoria de Infraestrutura e Redes | SUTEC | coire@cariris.gov.br | N |
+| 1 | ABC | GABIN | Gabinete | | governador@abc.gov.br | S |
+| 2 | ABC | ASIMP | Assessoria de Imprensa | GABIN | imprensa@abc.gov.br | S |
+| 5 | ABC | SETIN | Secretaria de Transformação Digital e Inovação | | setin@abc.gov.br | N |
+| 6 | ABC | SUTEC | Subsecretaria de Tecnologia e Infraestrutura | SETIN | sutec@abc.gov.br | N |
+| 13 | ABC | COIRE | Coordenadoria de Infraestrutura e Redes | SUTEC | coire@abc.gov.br | N |
 
 <a name="sip-usuarios"></a>
 ## 🙋 SIP — Usuários e Primeiras Permissões
@@ -200,10 +200,10 @@ Cadastra usuários e concede a primeira permissão de cada um, numa única carga
 
 | Index | orgao | sigla | nome | cpf | unidadePrimeiraPermissao | perfilPrimeiraPermissao |
 |---|---|---|---|---|---|---|
-| 1 | ANITEC | leocadio.macambira | Leocádio Macambira | 118.229.998-98 | PRESI | Básico |
-| 2 | ANITEC | tertuliano.gongora | Tertuliano Gongora | 124.039.082-31 | PROT | Básico |
-| 3 | ANITEC | belarmina.batatinha | Belarmina Batatinha | 147.551.240-69 | PROT | Colaborador (Básico sem Assinatura) |
-| 11 | ANITEC | norberto.camarinha | Norberto Camarinha *(nomeSocial: Zildette Brazil)* | 951.628.492-27 | PROT | Colaborador (Básico sem Assinatura) |
+| 1 | ABC | leocadio.macambira | Leocádio Macambira | 118.229.998-98 | GABIN | Básico |
+| 2 | ABC | tertuliano.gongora | Tertuliano Gongora | 124.039.082-31 | SEADM | Básico |
+| 3 | ABC | belarmina.batatinha | Belarmina Batatinha | 147.551.240-69 | SEADM | Colaborador (Básico sem Assinatura) |
+| 11 | ABC | norberto.camarinha | Norberto Camarinha *(nomeSocial: Zildette Brazil)* | 951.628.492-27 | SEADM | Colaborador (Básico sem Assinatura) |
 
 ---
 
@@ -215,8 +215,9 @@ telefone, site, CNPJ e lista de e-mails. **Operação de atualização**: sempre
 reporta "OK (atualizado)" — não existe "pulado" nesta carga. Campo vazio na planilha preserva
 o valor já existente.
 
-**Colunas**: usa o **mesmo arquivo** `exemploUnidades.csv` da carga de Unidades e Hierarquia
-(SIP), consumindo as colunas que aquela carga não usa (5, 6-15 — ver tabela acima). Quando a
+**Colunas**: usa o **mesmo conteúdo** de `exemploUnidades.csv` (SIP), empacotado neste módulo
+como `exemploContatoUnidades.csv`, consumindo as colunas que a carga do SIP não usa (5, 6-15 —
+ver tabela acima). Quando a
 coluna 6 (`usaEnderecoDoOrgao?`) é `S`, os campos de endereço próprio (7-12) podem ficar em
 branco.
 
@@ -258,7 +259,7 @@ Unidade acima (sempre sobrescreve, campo vazio preserva o valor existente).
 | siglaUsuario | generoUsuario | usaEnderecoDoOrgao | cidadeUsuario | cargoUsuario | categoriaUsuario | dataNascUsuario | telefoneComercialUsuario |
 |---|---|---|---|---|---|---|---|
 | tertuliano.gongora | M | N | Rio de Janeiro | Coordenador | Servidor Público Federal | 31/12/1978 | (21) 2345-6789 |
-| zildette.brazil | F | N | São Paulo | | Terceirizado | 15/03/1990 | (11) 3456-7890 |
+| norberto.camarinha | F | N | São Paulo | | Terceirizado | 15/03/1990 | (11) 3456-7890 |
 | feliciana.travassos | F | N | Porto Alegre | Analista Técnico-Administrativa | Servidor Público Federal | 07/07/1991 | (51) 3344-7788 |
 | querubina.espinosa | F | S | Florianópolis | Coordenadora | Servidor Público Federal | 14/12/1985 | (48) 3344-1122 |
 
@@ -313,7 +314,7 @@ Cadastra tipos de processo, com assuntos sugeridos, restrições de órgão/unid
 
 | Nome | sugestaoDeAssuntos | restringirAsUnidades | NiveisDeAcessoPermitidos | NivelDeAcessoSugerido | GrauSigilo |
 |---|---|---|---|---|---|
-| Comunicação: Serviço De Transmissão De Dados, Voz E Imagem | 073.4 | `PEN:ADMIN\|NEG;SBM:GABPREF\|SEDUC` | PUB;RES | RES | |
+| Comunicação: Serviço De Transmissão De Dados, Voz E Imagem | 073.4 | `ABC:GABIN\|SEADM` | PUB;RES | RES | |
 | Gestão de Contrato: Cadastramento De Fornecedores | 030.02 | | PUB;RES;SIG | SIG | R |
 | Capacitação: Contratação de curso com ônus à Instituição | 028.21 | | PUB | PUB | |
 | Pessoal: Licenças | 023.3 | | SIG | SIG | S |

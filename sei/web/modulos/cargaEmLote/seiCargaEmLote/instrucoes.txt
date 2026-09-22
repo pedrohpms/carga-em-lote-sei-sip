@@ -69,7 +69,7 @@ arquivo enviado e usa o leitor certo - PHPExcel, ja vendorizado no proprio frame
 infra/infra_php/PHPExcel, faz a leitura de .xlsx/.ods). Arquivos de referencia com o mesmo
 conteudo nos 3 formatos ficam em exemplos/, dentro da pasta deste modulo:
     sei/web/modulos/cargaEmLote/seiCargaEmLote/exemplos/
-        exemploUnidades.{csv,xlsx,ods}            (Dados Complementares de Unidade)
+        exemploContatoUnidades.{csv,xlsx,ods}      (Dados Complementares de Unidade)
         exemploContatoUsuarios.{csv,xlsx,ods}      (Contato de Usuarios)
         exemploAssuntos.{csv,xlsx,ods}             (Assuntos)
         exemploTiposDeProcesso.{csv,xlsx,ods}      (Tipos de Processo)
@@ -92,8 +92,8 @@ Operacoes cobertas por este modulo (as 4 do lado SEI do repositorio pengovbr/mac
 - Dados Complementares de Unidade (macro 3.dadosUnidadesSEI) - operacao de ATUALIZACAO: o csv
   e sempre tratado como fonte de verdade, os campos sao sempre sobrescritos e reportados como
   "OK (atualizado)" - nao existe estado "pulado" nesta operacao. Usa o mesmo arquivo .csv de
-  unidades do modulo SIP (exemploUnidades, 16 colunas), consumindo as colunas que o modulo SIP
-  nao usa (5, 6-15).
+  unidades do modulo SIP (mesmo conteudo do exemploContatoUnidades.csv deste modulo, 16
+  colunas), consumindo as colunas que o modulo SIP nao usa (5, 6-15).
 - Contato de Usuarios (macro 6.cargaContatoUsuarios) - tambem operacao de ATUALIZACAO, mesmo
   raciocinio da anterior. Sem coluna de orgao no csv (sigla de usuario e resolvida em todos os
   orgaos; erro se ambigua).
