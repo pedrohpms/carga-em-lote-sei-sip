@@ -40,6 +40,42 @@ class MdCelSipRN extends InfraRN {
   const RECURSO_USUARIO = 'md_cel_usuario_cadastrar';
   const RECURSO_PERMISSAO = 'md_cel_permissao_cadastrar';
 
+  // Cabecalho esperado de cada tipo de carga (mesmo texto da primeira linha dos exemplos
+  // correspondentes) - usado por validarCabecalho() para detectar, antes de processar
+  // qualquer linha, que o arquivo enviado nao e do tipo de carga selecionado na tela (mesmo
+  // motivo do modulo SEI - ver comentario equivalente em MdCelSeiRN). CABECALHO_UNIDADES e
+  // identico ao CABECALHO_UNIDADE_COMPLEMENTAR do modulo SEI de proposito: e o mesmo arquivo,
+  // usado primeiro aqui (cadastro) e depois no SEI (complemento de endereco/contato).
+  const CABECALHO_UNIDADES = [
+    '0-Seq.',
+    '1-orgaoUnidade',
+    '2-siglaUnidade',
+    '3-descricaoUnidade',
+    '4-superiorNaHierarquia',
+    '5-emailUnidade',
+    '6-usaEndereçoDoÓrgao?',
+    '7-endereçoUnidade',
+    '8-complementoEndereco',
+    '9-bairroUnidade',
+    '10-UFUnidade',
+    '11-cidadeUnidade',
+    '12-CEPUnidade',
+    '13-CNPJUnidade',
+    '14-telefoneUnidade',
+    '15-siteUnidade',
+  ];
+  const CABECALHO_USUARIOS = [
+    '0.Index',
+    '1.orgao',
+    '2.sigla',
+    '3.nome',
+    '4.nomeSocial',
+    '5.cpf',
+    '6.emailInstitucional',
+    '7.unidadePrimeiraPermissao',
+    '8.perfilPrimeiraPermissao',
+  ];
+
   // Tamanho de lote para processamento particionado (varias requisicoes HTTP curtas em vez
   // de uma unica requisicao longa) - existe porque o timeout que interrompe uma carga grande
   // NAO e o do PHP (max_execution_time=0 neste laboratorio) e sim o do servidor web/proxy na
@@ -164,17 +200,16 @@ class MdCelSipRN extends InfraRN {
 
   private function lerCsvPuro(string $strCaminhoArquivo): array {
     $arrLinhas = array();
+    $arrCabecalho = array();
     $resArquivo = fopen($strCaminhoArquivo, 'r');
     if ($resArquivo === false) {
       throw new InfraException('Não foi possível abrir o arquivo "' . $strCaminhoArquivo . '".');
     }
-    // Cabecalho e a "linha 0" (nao entra no relatorio); a primeira linha de dado e a linha 1.
+    // Cabecalho e a "linha 0" (nao entra no relatorio, mas e guardado - ver validarCabecalho());
+    // a primeira linha de dado e a linha 1.
     $numLinha = -1;
     while (($arrCampos = fgetcsv($resArquivo, 0, ',')) !== false) {
       $numLinha++;
-      if ($numLinha === 0) {
-        continue; // cabecalho
-      }
       $arrCampos = array_map(function ($strValor) {
         $strValor = trim((string)$strValor);
         // Normaliza para forma composta (NFC) antes de converter para ISO-8859-1: a mesma letra
@@ -186,10 +221,14 @@ class MdCelSipRN extends InfraRN {
         }
         return mb_convert_encoding($strValor, 'ISO-8859-1', 'UTF-8');
       }, $arrCampos);
+      if ($numLinha === 0) {
+        $arrCabecalho = $arrCampos;
+        continue;
+      }
       $arrLinhas[] = array('linha' => $numLinha, 'campos' => $arrCampos);
     }
     fclose($resArquivo);
-    return $arrLinhas;
+    return array('linhas' => $arrLinhas, 'cabecalho' => $arrCabecalho);
   }
 
   // PHPExcel ja vem vendorizado e autoloaded pelo proprio framework
@@ -198,6 +237,7 @@ class MdCelSipRN extends InfraRN {
   // mesma forma que as classes RN/DTO nativas sao usadas neste arquivo.
   private function lerPlanilha(string $strCaminhoArquivo, string $strTipoLeitor): array {
     $arrLinhas = array();
+    $arrCabecalho = array();
     $objReader = PHPExcel_IOFactory::createReader($strTipoLeitor);
     $objReader->setReadDataOnly(true);
     $objPHPExcel = $objReader->load($strCaminhoArquivo);
@@ -209,9 +249,6 @@ class MdCelSipRN extends InfraRN {
     $numLinha = -1;
     foreach ($arrLinhasPlanilha as $arrCampos) {
       $numLinha++;
-      if ($numLinha === 0) {
-        continue; // cabecalho
-      }
       $arrCampos = array_map(function ($strValor) {
         $strValor = trim((string)$strValor);
         if (class_exists('Normalizer')) {
@@ -219,9 +256,29 @@ class MdCelSipRN extends InfraRN {
         }
         return mb_convert_encoding($strValor, 'ISO-8859-1', 'UTF-8');
       }, $arrCampos);
+      if ($numLinha === 0) {
+        $arrCabecalho = $arrCampos;
+        continue;
+      }
       $arrLinhas[] = array('linha' => $numLinha, 'campos' => $arrCampos);
     }
-    return $arrLinhas;
+    return array('linhas' => $arrLinhas, 'cabecalho' => $arrCabecalho);
+  }
+
+  /**
+   * Confere se o cabecalho do arquivo enviado bate com o esperado pro tipo de carga
+   * selecionado, comparando so as count($arrCabecalhoEsperado) primeiras colunas - colunas
+   * extras no arquivo, alem das esperadas, sao toleradas (mesmo criterio ja usado na leitura
+   * linha a linha, que ignora colunas alem das que cada operacao usa, via `$c[N] ?? ''`).
+   * Lancada antes de processar qualquer linha do lote, pra reportar um erro unico e claro em
+   * vez de uma linha de erro por registro (ver CABECALHO_* acima para o porque).
+   */
+  private function validarCabecalho(array $arrCabecalho, array $arrCabecalhoEsperado, string $strRotuloTipo): void {
+    foreach ($arrCabecalhoEsperado as $numIndice => $strColunaEsperada) {
+      if (!isset($arrCabecalho[$numIndice]) || trim($arrCabecalho[$numIndice]) !== trim($strColunaEsperada)) {
+        throw new InfraException('Arquivo não corresponde ao tipo de carga "' . $strRotuloTipo . '" selecionado (colunas não conferem). Confira se escolheu o arquivo certo.');
+      }
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -303,7 +360,9 @@ class MdCelSipRN extends InfraRN {
     $numOffset = $arrParametros['offset'] ?? 0;
     $numLimite = $arrParametros['limite'] ?? null;
 
-    $arrTodasLinhas = $this->lerCsv($strCaminhoArquivo);
+    $arrLeitura = $this->lerCsv($strCaminhoArquivo);
+    $this->validarCabecalho($arrLeitura['cabecalho'], self::CABECALHO_UNIDADES, 'Unidades e Hierarquia');
+    $arrTodasLinhas = $arrLeitura['linhas'];
     $numTotal = count($arrTodasLinhas);
     $arrLote = ($numLimite === null) ? array_slice($arrTodasLinhas, $numOffset) : array_slice($arrTodasLinhas, $numOffset, $numLimite);
 
@@ -490,7 +549,9 @@ class MdCelSipRN extends InfraRN {
     $numOffset = $arrParametros['offset'] ?? 0;
     $numLimite = $arrParametros['limite'] ?? null;
 
-    $arrTodasLinhas = $this->lerCsv($strCaminhoArquivo);
+    $arrLeitura = $this->lerCsv($strCaminhoArquivo);
+    $this->validarCabecalho($arrLeitura['cabecalho'], self::CABECALHO_USUARIOS, 'Usuários e Primeiras Permissões');
+    $arrTodasLinhas = $arrLeitura['linhas'];
     $numTotal = count($arrTodasLinhas);
     $arrLote = ($numLimite === null) ? array_slice($arrTodasLinhas, $numOffset) : array_slice($arrTodasLinhas, $numOffset, $numLimite);
 

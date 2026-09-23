@@ -26,10 +26,10 @@ class MdCelAtualizadorSipRN extends InfraRN
 {
 
     private $numSeg = 0;
-    private $versaoAtualDesteModulo = '0.1.1';
+    private $versaoAtualDesteModulo = '0.1.2';
     private $nomeDesteModulo = 'MÓDULO CARGA EM LOTE';
     private $nomeParametroModulo = 'MD_CEL_VERSAO';
-    private $historicoVersoes = ['0.1.1'];
+    private $historicoVersoes = ['0.1.1', '0.1.2'];
 
     // Nome exibido na lista de perfis. So o identificador tecnico (recurso, parametro,
     // regra de auditoria) usa o prefixo MD_CEL - o nome do perfil pode ser legivel.
@@ -143,6 +143,10 @@ class MdCelAtualizadorSipRN extends InfraRN
             switch ($strVersaoModulo) {
                 case '':
                     $this->instalarv011();
+                    // sem break: cai para a próxima versão (fallthrough documentado no
+                    // topo do arquivo) - instalação nova já sai na versão mais atual.
+                case '0.1.1':
+                    $this->instalarv012();
                     break;
                 default:
                     $this->finalizar('A VERSÃO MAIS ATUAL DO ' . $this->nomeDesteModulo . ' (v' . $this->versaoAtualDesteModulo . ') JÁ ESTÁ INSTALADA.');
@@ -175,6 +179,21 @@ class MdCelAtualizadorSipRN extends InfraRN
 
         $this->instalarNoSistema('SEI', $this->arrRecursosSei, true, null);
         $this->instalarNoSistema('SIP', $this->arrRecursosSip, false, 'carga.svg');
+
+        $this->atualizarNumeroVersao($nmVersao);
+    }
+
+    /**
+     * Versão 0.1.2: nenhum objeto novo no banco (perfil, recursos, menu e regra de auditoria já
+     * existem desde a 0.1.1) - versão só de código (validação do cabeçalho do arquivo enviado
+     * contra o tipo de carga selecionado, nas RN dos dois sistemas). Só avança o número de
+     * versão registrado.
+     */
+    protected function instalarv012()
+    {
+        $nmVersao = '0.1.2';
+
+        $this->logar('EXECUTANDO A INSTALAÇÃO/ATUALIZAÇÃO DA VERSÃO ' . $nmVersao . ' DO ' . $this->nomeDesteModulo . ' NA BASE DO SIP (sem objeto novo no banco - versão de código)');
 
         $this->atualizarNumeroVersao($nmVersao);
     }

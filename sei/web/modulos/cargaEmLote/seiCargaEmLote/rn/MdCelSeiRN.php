@@ -56,6 +56,87 @@ class MdCelSeiRN extends InfraRN {
   const RECURSO_ASSUNTOS = 'md_cel_assunto_cadastrar';
   const RECURSO_TIPOS_PROCESSO = 'md_cel_tipo_procedimento_cadastrar';
 
+  // Cabecalho esperado de cada tipo de carga (mesmo texto da primeira linha dos exemplos
+  // correspondentes) - usado por validarCabecalho() para detectar, antes de processar
+  // qualquer linha, que o arquivo enviado nao e do tipo de carga selecionado na tela (achado
+  // em teste manual: escolher "Contato de Usuarios" e enviar exemploContatoUnidades.xlsx
+  // gerava uma linha de erro "usuario X nao encontrado" por linha, sem indicar a causa real).
+  const CABECALHO_UNIDADE_COMPLEMENTAR = [
+    '0-Seq.',
+    '1-orgaoUnidade',
+    '2-siglaUnidade',
+    '3-descricaoUnidade',
+    '4-superiorNaHierarquia',
+    '5-emailUnidade',
+    '6-usaEndereçoDoÓrgao?',
+    '7-endereçoUnidade',
+    '8-complementoEndereco',
+    '9-bairroUnidade',
+    '10-UFUnidade',
+    '11-cidadeUnidade',
+    '12-CEPUnidade',
+    '13-CNPJUnidade',
+    '14-telefoneUnidade',
+    '15-siteUnidade',
+  ];
+  const CABECALHO_CONTATO_USUARIOS = [
+    '0.Seq.',
+    '1.siglaUsuario',
+    '2.generoUsuario',
+    '3.usaEnderecoDoOrgao',
+    '4.enderecoUsuario',
+    '5.complemEndUsuario',
+    '6.bairroUsuario',
+    '7.paisUsuario',
+    '8.ufUsuario',
+    '9.cidadeUsuario',
+    '10.cepUsuario',
+    '11.cargoUsuario',
+    '12.categoriaUsuario',
+    '13.funcaoUsuario',
+    '14.tituloUsuario',
+    '15.cpfUsuario',
+    '16.rgUsuario',
+    '17.orgaoExpRgUsuario',
+    '18.dataNascUsuario',
+    '19.matriculaUsuario',
+    '20.matOabUsuario',
+    '21.passaporteUsuario',
+    '22.paisPassaporteUsuario',
+    '23.telefoneComercialUsuario',
+    '24.telefoneCelularUsuario',
+    '25.telefoneResidencialUsuario',
+    '26.conjugeUsuario',
+    '27.emailUsuario',
+    '28.obsUsuario',
+  ];
+  const CABECALHO_ASSUNTOS = [
+    '0.Index',
+    '1.CodigoEstruturado',
+    '2.NomeAssunto',
+    '3.chkEstrutural',
+    '4.PrazoCorrente',
+    '5.PrazoIntermed',
+    '6.Destinacao',
+    '7.Obs',
+  ];
+  const CABECALHO_TIPOS_PROCESSO = [
+    '0.Seq',
+    '1.Nome',
+    '2.descricao',
+    '3.sugestaoDeAssuntos',
+    '4.restringirAosOrgaos',
+    '5.restringirAsUnidades',
+    '6.NiveisDeAcessoPermitidos',
+    '7.NivelDeAcessoSugerido',
+    '8.GrauSigilo',
+    '9.sugestaoHipoteseLegal',
+    '10.exclusivoOuvidoria',
+    '11.permiteContatoAnonimo(ouvidoria)',
+    '12.ProcessoUnicoPorInteressado',
+    '13.InternoDoSistema',
+  ];
+
   // Tamanho de lote para processamento particionado (varias requisicoes HTTP curtas em vez
   // de uma unica requisicao longa) - existe porque o timeout que interrompe uma carga grande
   // NAO e o do PHP (max_execution_time=0 neste laboratorio) e sim o do servidor web/proxy na
@@ -212,17 +293,16 @@ class MdCelSeiRN extends InfraRN {
 
   private function lerCsvPuro(string $strCaminhoArquivo): array {
     $arrLinhas = array();
+    $arrCabecalho = array();
     $resArquivo = fopen($strCaminhoArquivo, 'r');
     if ($resArquivo === false) {
       throw new InfraException('Não foi possível abrir o arquivo "' . $strCaminhoArquivo . '".');
     }
-    // Cabecalho e a "linha 0" (nao entra no relatorio); a primeira linha de dado e a linha 1.
+    // Cabecalho e a "linha 0" (nao entra no relatorio, mas e guardado - ver validarCabecalho());
+    // a primeira linha de dado e a linha 1.
     $numLinha = -1;
     while (($arrCampos = fgetcsv($resArquivo, 0, ',')) !== false) {
       $numLinha++;
-      if ($numLinha === 0) {
-        continue; // cabecalho
-      }
       $arrCampos = array_map(function ($strValor) {
         $strValor = trim((string)$strValor);
         if (class_exists('Normalizer')) {
@@ -230,10 +310,14 @@ class MdCelSeiRN extends InfraRN {
         }
         return mb_convert_encoding($strValor, 'ISO-8859-1', 'UTF-8');
       }, $arrCampos);
+      if ($numLinha === 0) {
+        $arrCabecalho = $arrCampos;
+        continue;
+      }
       $arrLinhas[] = array('linha' => $numLinha, 'campos' => $arrCampos);
     }
     fclose($resArquivo);
-    return $arrLinhas;
+    return array('linhas' => $arrLinhas, 'cabecalho' => $arrCabecalho);
   }
 
   // PHPExcel ja vem vendorizado e autoloaded pelo proprio framework
@@ -242,6 +326,7 @@ class MdCelSeiRN extends InfraRN {
   // mesma forma que as classes RN/DTO nativas sao usadas neste arquivo.
   private function lerPlanilha(string $strCaminhoArquivo, string $strTipoLeitor): array {
     $arrLinhas = array();
+    $arrCabecalho = array();
     $objReader = PHPExcel_IOFactory::createReader($strTipoLeitor);
     $objReader->setReadDataOnly(true);
     $objPHPExcel = $objReader->load($strCaminhoArquivo);
@@ -253,9 +338,6 @@ class MdCelSeiRN extends InfraRN {
     $numLinha = -1;
     foreach ($arrLinhasPlanilha as $arrCampos) {
       $numLinha++;
-      if ($numLinha === 0) {
-        continue; // cabecalho
-      }
       $arrCampos = array_map(function ($strValor) {
         $strValor = trim((string)$strValor);
         if (class_exists('Normalizer')) {
@@ -263,9 +345,29 @@ class MdCelSeiRN extends InfraRN {
         }
         return mb_convert_encoding($strValor, 'ISO-8859-1', 'UTF-8');
       }, $arrCampos);
+      if ($numLinha === 0) {
+        $arrCabecalho = $arrCampos;
+        continue;
+      }
       $arrLinhas[] = array('linha' => $numLinha, 'campos' => $arrCampos);
     }
-    return $arrLinhas;
+    return array('linhas' => $arrLinhas, 'cabecalho' => $arrCabecalho);
+  }
+
+  /**
+   * Confere se o cabecalho do arquivo enviado bate com o esperado pro tipo de carga
+   * selecionado, comparando so as count($arrCabecalhoEsperado) primeiras colunas - colunas
+   * extras no arquivo, alem das esperadas, sao toleradas (mesmo criterio ja usado na leitura
+   * linha a linha, que ignora colunas alem das que cada operacao usa, via `$c[N] ?? ''`).
+   * Lancada antes de processar qualquer linha do lote, pra reportar um erro unico e claro em
+   * vez de uma linha de erro por registro (ver CABECALHO_* acima para o porque).
+   */
+  private function validarCabecalho(array $arrCabecalho, array $arrCabecalhoEsperado, string $strRotuloTipo): void {
+    foreach ($arrCabecalhoEsperado as $numIndice => $strColunaEsperada) {
+      if (!isset($arrCabecalho[$numIndice]) || trim($arrCabecalho[$numIndice]) !== trim($strColunaEsperada)) {
+        throw new InfraException('Arquivo não corresponde ao tipo de carga "' . $strRotuloTipo . '" selecionado (colunas não conferem). Confira se escolheu o arquivo certo.');
+      }
+    }
   }
 
   /**
@@ -303,10 +405,11 @@ class MdCelSeiRN extends InfraRN {
   // arquivo inteiro a cada lote e barato (poucos milhares de linhas, no maximo) perto do
   // custo real, que e a gravacao no banco por linha.
   private function lerLote(string $strCaminhoArquivo, int $numOffset, ?int $numLimite): array {
-    $arrTodasLinhas = $this->lerCsv($strCaminhoArquivo);
+    $arrLeitura = $this->lerCsv($strCaminhoArquivo);
+    $arrTodasLinhas = $arrLeitura['linhas'];
     $numTotal = count($arrTodasLinhas);
     $arrLote = ($numLimite === null) ? array_slice($arrTodasLinhas, $numOffset) : array_slice($arrTodasLinhas, $numOffset, $numLimite);
-    return array('linhas' => $arrLote, 'total' => $numTotal);
+    return array('linhas' => $arrLote, 'total' => $numTotal, 'cabecalho' => $arrLeitura['cabecalho']);
   }
 
   // ---------------------------------------------------------------------
@@ -329,6 +432,7 @@ class MdCelSeiRN extends InfraRN {
     $this->validarOperacao(self::RECURSO_UNIDADE_COMPLEMENTAR, __METHOD__, $arrParametros);
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
+    $this->validarCabecalho($arrLoteInfo['cabecalho'], self::CABECALHO_UNIDADE_COMPLEMENTAR, 'Dados Complementares de Unidade');
     $arrResultado = [];
     foreach ($arrLoteInfo['linhas'] as $arrLinha) {
       try {
@@ -505,6 +609,7 @@ class MdCelSeiRN extends InfraRN {
     $this->validarOperacao(self::RECURSO_CONTATO_USUARIOS, __METHOD__, $arrParametros);
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
+    $this->validarCabecalho($arrLoteInfo['cabecalho'], self::CABECALHO_CONTATO_USUARIOS, 'Contato de Usuários');
     $arrResultado = [];
     foreach ($arrLoteInfo['linhas'] as $arrLinha) {
       try {
@@ -794,6 +899,7 @@ class MdCelSeiRN extends InfraRN {
     $strCaminhoArquivo = $arrParametros['csv'];
     $strNomeTabela = $arrParametros['nomeTabela'] ?? null;
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
+    $this->validarCabecalho($arrLoteInfo['cabecalho'], self::CABECALHO_ASSUNTOS, 'Assuntos');
     $arrResultado = [];
     $objTabelaAssuntosDTO = $this->resolverTabelaAssuntos($strNomeTabela);
 
@@ -973,6 +1079,7 @@ class MdCelSeiRN extends InfraRN {
     $this->validarOperacao(self::RECURSO_TIPOS_PROCESSO, __METHOD__, $arrParametros);
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
+    $this->validarCabecalho($arrLoteInfo['cabecalho'], self::CABECALHO_TIPOS_PROCESSO, 'Tipos de Processo');
     $arrResultado = [];
     $objTabelaAssuntosDTO = $this->resolverTabelaAssuntos(null);
 
