@@ -94,11 +94,12 @@ O script do SEI só registra a versão (`MD_CEL_VERSAO`), porque o módulo não 
 > Os arquivos de exemplo em `exemplos/`, dentro da pasta de cada módulo, definem a **estrutura exata** esperada por cada tipo de carga: quantidade de colunas, ordem e significado de cada uma. As colunas são lidas **pela posição**, não pelo nome do cabeçalho.
 >
 > - **Não** insira, remova, renomeie ou reordene colunas.
-> - **Não** insira uma linha de cabeçalho diferente da dos arquivos de exemplo — a primeira linha é sempre ignorada como cabeçalho, então seu conteúdo exato não importa, mas a **posição das colunas de dado abaixo dela, sim**.
+> - A primeira linha é sempre tratada como cabeçalho, nunca como dado, mas seu texto **é conferido** contra o cabeçalho do arquivo de exemplo daquele tipo de carga antes de processar qualquer linha — se não bater, a tela recusa o arquivo inteiro com um erro só, em vez de errar linha por linha (ver [Arquivo não corresponde ao tipo de carga selecionado](#arquivo-tipo-errado)).
 > - Baixe o exemplo do tipo de carga que for usar e **edite apenas o conteúdo das células**, preservando a estrutura original.
 > - Caso utilize o formato `.csv`, se algum valor contiver vírgula, coloque o valor inteiro entre aspas, por exemplo, `Divisão de Obras, Contratos e Serviços Gerais` deve ser gravado como
 >   `"Divisão de Obras, Contratos e Serviços Gerais"`.
 
+<a name="formatos-aceitos"></a>
 ### Formatos aceitos
 
 `.csv`, `.xlsx` e `.ods` — mesma estrutura de colunas nos três formatos. Arquivos de referência nos três formatos ficam em `exemplos/`, dentro da pasta de cada módulo.
@@ -134,6 +135,22 @@ Além do recurso do módulo, o operador precisa dos recursos das regras de negó
 ### Falha em uma linha
 
 Cada linha é gravada em uma transação própria. Se uma linha falha, nada dela permanece no banco, nem as gravações parciais feitas antes do erro, e as demais linhas seguem normalmente. O relatório mostra a mensagem de erro de cada linha com falha.
+
+<a name="arquivo-tipo-errado"></a>
+### Arquivo não corresponde ao tipo de carga selecionado
+
+Antes de processar qualquer linha, a tela confere o cabeçalho do arquivo enviado contra o cabeçalho do arquivo de exemplo do tipo de carga escolhido no campo "Tipo de carga". Se não bater, a tela para com o erro:
+
+> Arquivo não corresponde ao tipo de carga "..." selecionado (colunas não conferem). Confira se escolheu o arquivo certo.
+
+Nenhuma linha chega a ser processada nesse caso — o erro é sobre o arquivo inteiro, não sobre um registro específico. As causas mais comuns, em ordem de frequência:
+
+- **Arquivo do tipo de carga errado.** Por exemplo, escolher "Contato de Usuários" no campo "Tipo de carga" e enviar o arquivo `exemploContatoUnidades` (que é de "Dados Complementares de Unidade"). Confira o nome do arquivo contra a lista de [exemplos](#formatos-aceitos) do tipo de carga selecionado.
+- **Coluna excluída ou inserida.** O arquivo tem uma quantidade de colunas diferente da esperada.
+- **Colunas reordenadas.** As colunas são lidas pela posição, não pelo nome — se a ordem mudou, o conteúdo de uma coluna acaba caindo onde outra era esperada.
+- **Cabeçalho de outra versão do arquivo de exemplo**, caso o módulo tenha sido atualizado e a estrutura de alguma carga tenha mudado.
+
+Em qualquer um desses casos, a correção é a mesma: baixe de novo o arquivo de exemplo do tipo de carga desejado (em `exemplos/`, dentro da pasta de cada módulo) e monte a planilha final preservando exatamente a mesma sequência de colunas dele, editando só o conteúdo das células (mesma orientação do aviso no topo desta seção).
 
 ### Tamanho do arquivo
 
@@ -330,7 +347,7 @@ Validado ponta a ponta contra um ambiente de laboratório completo (SEI 5.0.5 + 
 containers Docker), incluindo um ciclo de reinstalação do zero e cargas de centenas de linhas
 por operação, para exercitar tanto o caminho feliz quanto o processamento em lotes.
 
-A versão 0.1.1 — pré-release, ainda sem uso em produção — traz classes `MdCel`, recursos por carga, scripts de release e regra de auditoria; foi validada no mesmo ambiente, incluindo a atualização a partir da 0.1.0 com as permissões já concedidas e um perfil restrito a uma única carga no SEI. O perfil restrito não foi testado no SIP.
+A versão 0.1.2 — pré-release, ainda sem uso em produção — traz classes `MdCel`, recursos por carga, scripts de release, regra de auditoria e validação do cabeçalho do arquivo enviado contra o tipo de carga selecionado; foi validada no mesmo ambiente, incluindo a atualização a partir da 0.1.0 com as permissões já concedidas e um perfil restrito a uma única carga no SEI. O perfil restrito não foi testado no SIP.
 
 Os exemplos usam só dados que já vêm na instalação padrão do SEI (órgão, unidades e usuários são criados pelo próprio módulo; cargo, assunto e hipótese legal são os nativos). Nenhum arquivo depende de cadastro manual prévio — validado contra um banco recém-instalado, sem nenhum ajuste administrativo antes da carga.
 
