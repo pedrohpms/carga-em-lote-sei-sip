@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<wsdl:definitions
+   name="MdCelSeiSipWS"
+   targetNamespace="MdCelSeiSip"
+   xmlns="http://schemas.xmlsoap.org/wsdl/"
+   xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+   xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+   xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+   xmlns:tns="MdCelSeiSip">
+
+  <wsdl:message name="verificarPendenciasUnidadesRequest">
+    <wsdl:part name="IdReplicacao" type="xsd:string" />
+    <wsdl:part name="IdUnidades" type="xsd:string" />
+  </wsdl:message>
+
+  <wsdl:message name="verificarPendenciasUnidadesResponse">
+    <wsdl:part name="parametros" type="xsd:string" />
+  </wsdl:message>
+
+  <wsdl:portType name="MdCelSeiSipPortType">
+    <wsdl:operation name="verificarPendenciasUnidades">
+       <wsdl:input message="tns:verificarPendenciasUnidadesRequest"/>
+       <wsdl:output message="tns:verificarPendenciasUnidadesResponse"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="MdCelSeiSipBinding" type="tns:MdCelSeiSipPortType">
+    <soap:binding style="rpc" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="verificarPendenciasUnidades">
+      <soap:operation soapAction="MdCelSeiSipAction"/>
+      <wsdl:input>
+        <soap:body namespace="MdCelSeiSip" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body namespace="MdCelSeiSip" use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/>
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="MdCelSeiSipService">
+    <wsdl:port name="MdCelSeiSipPortService" binding="tns:MdCelSeiSipBinding">
+      <soap:address location="[servidor]/modulos/cargaEmLote/seiCargaEmLote/ws/MdCelSeiSipWS.php"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

@@ -26,10 +26,10 @@ class MdCelAtualizadorSipRN extends InfraRN
 {
 
     private $numSeg = 0;
-    private $versaoAtualDesteModulo = '0.1.2';
+    private $versaoAtualDesteModulo = '0.2.0';
     private $nomeDesteModulo = 'MÓDULO CARGA EM LOTE';
     private $nomeParametroModulo = 'MD_CEL_VERSAO';
-    private $historicoVersoes = ['0.1.1', '0.1.2'];
+    private $historicoVersoes = ['0.1.1', '0.1.2', '0.2.0'];
 
     // Nome exibido na lista de perfis. So o identificador tecnico (recurso, parametro,
     // regra de auditoria) usa o prefixo MD_CEL - o nome do perfil pode ser legivel.
@@ -49,6 +49,19 @@ class MdCelAtualizadorSipRN extends InfraRN
         'md_cel_hierarquia_cadastrar' => 'Carga em Lote (SIP): hierarquia',
         'md_cel_usuario_cadastrar' => 'Carga em Lote (SIP): usuários',
         'md_cel_permissao_cadastrar' => 'Carga em Lote (SIP): primeiras permissões',
+    ];
+    // Tela "Unidades pelo SIORG" (0.2.0). O recurso da tela é md_cel_siorg; estes são os de escrita.
+    private $arrRecursosSiorg = [
+        'md_cel_siorg_unidade_cadastrar' => 'Carga em Lote (SIP): importar unidade do SIORG',
+        'md_cel_siorg_unidade_alterar' => 'Carga em Lote (SIP): atualizar sigla e nome pelo SIORG',
+        'md_cel_siorg_unidade_desativar' => 'Carga em Lote (SIP): desativar unidade que saiu da estrutura do SIORG',
+    ];
+    // Parâmetros do banco do SIP lidos por MdCelSipSiorgRN (mesmos valores de MdCelSipSiorgRN::PARAMETROS).
+    private $arrParametrosSiorg = [
+        'MD_CEL_SIORG_URL' => 'https://estruturaorganizacional.dados.gov.br/doc',
+        'MD_CEL_SIORG_TIMEOUT' => '30',
+        'MD_CEL_SIORG_PROXY' => '',
+        'MD_CEL_SIORG_TIPOS_IGNORADOS' => 'unidade-colegiada',
     ];
 
     public function __construct()
@@ -147,6 +160,9 @@ class MdCelAtualizadorSipRN extends InfraRN
                     // topo do arquivo) - instalação nova já sai na versão mais atual.
                 case '0.1.1':
                     $this->instalarv012();
+                    // sem break
+                case '0.1.2':
+                    $this->instalarv020();
                     break;
                 default:
                     $this->finalizar('A VERSÃO MAIS ATUAL DO ' . $this->nomeDesteModulo . ' (v' . $this->versaoAtualDesteModulo . ') JÁ ESTÁ INSTALADA.');
@@ -194,6 +210,44 @@ class MdCelAtualizadorSipRN extends InfraRN
         $nmVersao = '0.1.2';
 
         $this->logar('EXECUTANDO A INSTALAÇÃO/ATUALIZAÇÃO DA VERSÃO ' . $nmVersao . ' DO ' . $this->nomeDesteModulo . ' NA BASE DO SIP (sem objeto novo no banco - versão de código)');
+
+        $this->atualizarNumeroVersao($nmVersao);
+    }
+
+    /**
+     * Versão 0.2.0: tela "Unidades pelo SIORG" no sistema SIP (importa, atualiza e desativa unidades a
+     * partir da estrutura do órgão no SIORG): recurso da tela e item de menu no perfil Carga em Lote,
+     * recursos de escrita na regra de auditoria MD_CEL e parâmetros MD_CEL_SIORG_*. No sistema SEI nada
+     * muda no banco. Idempotente.
+     */
+    protected function instalarv020()
+    {
+        $nmVersao = '0.2.0';
+
+        $this->logar('EXECUTANDO A INSTALAÇÃO/ATUALIZAÇÃO DA VERSÃO ' . $nmVersao . ' DO ' . $this->nomeDesteModulo . ' NA BASE DO SIP');
+
+        $numIdSistema = $this->obterIdSistema('SIP');
+        $numIdMenu = $this->obterIdMenuPrincipal($numIdSistema);
+        $numIdPerfil = $this->adicionarPerfil($numIdSistema, $this->strPerfil, 'Operador da Carga em Lote (SIP)')->getNumIdPerfil();
+
+        $this->logar('CRIANDO RECURSO E ITEM DE MENU DA TELA Unidades pelo SIORG');
+        $objRecursoDTO = $this->adicionarRecursoPerfil($numIdSistema, $numIdPerfil, 'md_cel_siorg', null, 'Carga em Lote (SIP): unidades pelo SIORG');
+        $this->adicionarItemMenu($numIdSistema, $numIdPerfil, $numIdMenu, null, $objRecursoDTO->getNumIdRecurso(), 'Unidades pelo SIORG', 0, 'carga.svg');
+
+        foreach ($this->arrRecursosSiorg as $strNomeRecurso => $strDescricao) {
+            $this->adicionarRecursoPerfil($numIdSistema, $numIdPerfil, $strNomeRecurso, null, $strDescricao);
+        }
+        $this->_cadastrarAuditoria($numIdSistema, array_map(function ($strNome) {
+            return "'" . $strNome . "'";
+        }, array_keys($this->arrRecursosSiorg)));
+
+        $this->logar('CRIANDO OS PARAMETROS MD_CEL_SIORG_* NO BANCO DO SIP');
+        $objInfraParametro = new InfraParametro(BancoSip::getInstance());
+        foreach ($this->arrParametrosSiorg as $strNome => $strValor) {
+            if (!$objInfraParametro->isSetValor($strNome)) {
+                $objInfraParametro->setValor($strNome, $strValor);
+            }
+        }
 
         $this->atualizarNumeroVersao($nmVersao);
     }

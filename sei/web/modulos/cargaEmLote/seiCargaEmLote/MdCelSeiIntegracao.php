@@ -27,7 +27,7 @@ class MdCelSeiIntegracao extends SeiIntegracao {
   }
 
   public function getVersao() {
-    return '0.1.2';
+    return '0.2.0';
   }
 
   public function getInstituicao() {
@@ -40,6 +40,17 @@ class MdCelSeiIntegracao extends SeiIntegracao {
 
   public function obterDiretorioIconesMenu() {
     return __DIR__ . '/menu';
+  }
+
+  /**
+   * Servico md_cel_sip (ws/MdCelSeiSipWS.php): o lado SIP do modulo consulta processos abertos e blocos
+   * de uma unidade antes de desativa-la pela tela "Unidades pelo SIORG". So consulta.
+   */
+  public function processarControladorWebServices($strServico) {
+    if ($strServico === 'md_cel_sip') {
+      return __DIR__ . '/ws/md_cel_sip.wsdl';
+    }
+    return null;
   }
 
   public function processarControlador($strAcao) {

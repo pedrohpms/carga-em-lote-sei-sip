@@ -20,10 +20,10 @@ class MdCelAtualizadorSeiRN extends InfraRN
 {
 
     private $numSeg = 0;
-    private $versaoAtualDesteModulo = '0.1.2';
+    private $versaoAtualDesteModulo = '0.2.0';
     private $nomeDesteModulo = 'MODULO CARGA EM LOTE';
     private $nomeParametroModulo = 'MD_CEL_VERSAO';
-    private $historicoVersoes = ['0.1.1', '0.1.2'];
+    private $historicoVersoes = ['0.1.1', '0.1.2', '0.2.0'];
 
     public function __construct()
     {
@@ -123,6 +123,9 @@ class MdCelAtualizadorSeiRN extends InfraRN
                     // topo do arquivo) - instalacao nova ja sai na versao mais atual.
                 case '0.1.1':
                     $this->instalarv012();
+                    // sem break
+                case '0.1.2':
+                    $this->instalarv020();
                     break;
                 default:
                     $this->finalizar('A VERSAO MAIS ATUAL DO ' . $this->nomeDesteModulo . ' (v' . $this->versaoAtualDesteModulo . ') JA ESTA INSTALADA.');
@@ -162,6 +165,19 @@ class MdCelAtualizadorSeiRN extends InfraRN
     protected function instalarv012()
     {
         $nmVersao = '0.1.2';
+
+        $this->logar('EXECUTANDO A INSTALACAO/ATUALIZACAO DA VERSAO ' . $nmVersao . ' DO ' . $this->nomeDesteModulo . ' NA BASE DO SEI (sem objeto novo no banco - versao de codigo)');
+
+        $this->atualizarNumeroVersao($nmVersao);
+    }
+
+    /**
+     * Versao 0.2.0: nenhum objeto novo no banco do SEI. O lado SEI ganha so o servico de consulta
+     * md_cel_sip (ws/MdCelSeiSipWS.php), usado pela tela "Unidades pelo SIORG" do lado SIP.
+     */
+    protected function instalarv020()
+    {
+        $nmVersao = '0.2.0';
 
         $this->logar('EXECUTANDO A INSTALACAO/ATUALIZACAO DA VERSAO ' . $nmVersao . ' DO ' . $this->nomeDesteModulo . ' NA BASE DO SEI (sem objeto novo no banco - versao de codigo)');
 
