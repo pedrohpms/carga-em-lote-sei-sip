@@ -88,6 +88,13 @@ relatorio acumulado) fica na sessao do navegador do usuario, nao em banco - some
 usuario fechar a aba ou a sessao expirar no meio, sem deixar rastro (so o arquivo temporario,
 apagado ao concluir ou ao iniciar uma nova carga).
 
+Servico md_cel_sip (a partir da 0.2.0): o modulo SEI publica o servico de consulta
+controlador_ws.php?servico=md_cel_sip (ws/MdCelSeiSipWS.php), usado pela tela "Unidades pelo
+SIORG" do modulo SIP antes de desativar uma unidade. Ele informa quantos processos abertos e
+blocos pendentes a unidade tem, porque a desativacao de unidade no SEI nao confere isso. So
+consulta, e a chamada e autenticada como a replicacao do SIP (identificador de uso unico gerado
+pelo SIP e conferido pelo SEI no SIP), sem chave nova para configurar.
+
 Operacoes cobertas por este modulo (as 4 do lado SEI do repositorio pengovbr/macros-sei-sip):
 - Dados Complementares de Unidade (macro 3.dadosUnidadesSEI) - operacao de ATUALIZACAO: o csv
   e sempre tratado como fonte de verdade, os campos sao sempre sobrescritos e reportados como

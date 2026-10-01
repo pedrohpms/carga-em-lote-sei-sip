@@ -87,6 +87,35 @@ navegador do usuario, nao em banco - some sozinho se o usuario fechar a aba ou a
 no meio, sem deixar rastro (so o arquivo temporario, apagado ao concluir ou ao iniciar uma
 nova carga).
 
+Unidades pelo SIORG (a partir da 0.2.0): tela propria, no item de menu "Unidades pelo SIORG" (raiz do
+menu do SIP). O operador escolhe o orgao do SIP e informa o codigo SIORG do mesmo orgao ou entidade;
+a tela le a estrutura do orgao na API publica do SIORG e compara com o SIP pelo campo id_origem
+da unidade, gravado como "SIORG:<codigo>". O orgao nao vira unidade: as unidades logo abaixo dele
+entram como raizes da hierarquia do sistema SEI. A tela permite:
+    - importar as unidades novas marcadas, em lotes de MdCelSipSiorgRN::TAMANHO_LOTE (10);
+    - atualizar sigla e nome das divergentes marcadas;
+    - desativar unidade que saiu da estrutura do orgao, so depois de tres passos de confirmacao
+      e so sem pendencias no SIP (permissoes, coordenador, subunidade ativa) nem no SEI
+      (processos abertos, blocos).
+Sigla que ja exista em outro orgao entra composta com a sigla do orgao no SIP (ORGAO_SIGLA),
+porque o SEI exige sigla unica entre orgaos. Ao fim de cada operacao a tela mostra o relatorio,
+com botao Imprimir. Recursos, todos no perfil "Carga em Lote" do sistema SIP:
+
+      md_cel_siorg                    Tela e comparacao
+      md_cel_siorg_unidade_cadastrar  Importar unidade (auditado)
+      md_cel_siorg_unidade_alterar    Atualizar sigla e nome (auditado)
+      md_cel_siorg_unidade_desativar  Desativar unidade (auditado)
+
+O operador precisa tambem dos recursos das RN do SIP usadas em cada operacao (unidade_cadastrar,
+rel_hierarquia_unidade_cadastrar, unidade_alterar, unidade_desativar,
+rel_hierarquia_unidade_desativar). Parametros, em SIP > Infra > Parametros: MD_CEL_SIORG_URL,
+MD_CEL_SIORG_TIMEOUT, MD_CEL_SIORG_PROXY (se o servidor do SIP sai para a internet por proxy) e
+MD_CEL_SIORG_TIPOS_IGNORADOS (tipos do SIORG que vem desmarcados; padrao unidade-colegiada). O
+servidor do SIP precisa alcancar https://estruturaorganizacional.dados.gov.br e ter a extensao
+curl do PHP. A desativacao consulta o SEI pelo servico md_cel_sip, do modulo SEI deste pacote
+(sei/web/modulos/cargaEmLote/seiCargaEmLote/ws/), pelo endereco de web service do sistema SEI ja
+cadastrado no SIP; por isso exige o modulo SEI instalado na pasta padrao.
+
 Limitacoes conhecidas (ver plano original para detalhes):
 - so cobre as 4 operacoes do repositorio pengovbr/macros-sei-sip que rodam no SIP: cadastro
   de unidades, hierarquia, usuarios e primeiras permissoes (unificadas em 2 tipos de carga:

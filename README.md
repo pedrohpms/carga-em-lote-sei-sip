@@ -11,6 +11,7 @@ Módulos de extensão para o Sistema Eletrônico de Informações - **SEI** e o 
 - [Orientações gerais e observações](#orientacoes-gerais-e-observacoes)
 - [SIP — Unidades e Hierarquia](#sip-unidades)
 - [SIP — Usuários e Primeiras Permissões](#sip-usuarios)
+- [SIP: Unidades pelo SIORG](#sip-siorg)
 - [SEI — Dados Complementares de Unidade](#sei-unidades)
 - [SEI — Contato de Usuários](#sei-contatos)
 - [SEI — Assuntos](#sei-assuntos)
@@ -129,6 +130,7 @@ O perfil `Carga em Lote` traz todas as cargas do sistema. Para liberar só algum
 | SEI | `md_cel_tipo_procedimento_cadastrar` | Tipos de Processo |
 | SIP | `md_cel_unidade_cadastrar` e `md_cel_hierarquia_cadastrar` | Unidades e Hierarquia (exige os dois) |
 | SIP | `md_cel_usuario_cadastrar` e `md_cel_permissao_cadastrar` | Usuários e Primeiras Permissões (exige os dois) |
+| SIP | `md_cel_siorg` (tela), `md_cel_siorg_unidade_cadastrar`, `md_cel_siorg_unidade_alterar` e `md_cel_siorg_unidade_desativar` | Unidades pelo SIORG: importar, atualizar sigla e nome, desativar |
 
 Além do recurso do módulo, o operador precisa dos recursos das regras de negócio nativas que a carga usa (por exemplo `assunto_cadastrar`, `unidade_alterar`, `usuario_cadastrar`). O módulo não concede escrita além do que o perfil do operador já permite.
 
@@ -221,6 +223,30 @@ Cadastra usuários e concede a primeira permissão de cada um, numa única carga
 | 2 | ABC | tertuliano.gongora | Tertuliano Gongora | 124.039.082-31 | SEADM | Básico |
 | 3 | ABC | belarmina.batatinha | Belarmina Batatinha | 147.551.240-69 | SEADM | Colaborador (Básico sem Assinatura) |
 | 11 | ABC | norberto.camarinha | Norberto Camarinha *(nomeSocial: Zildette Brazil)* | 951.628.492-27 | SEADM | Colaborador (Básico sem Assinatura) |
+
+---
+
+<a name="sip-siorg"></a>
+## 🏛️ SIP: Unidades pelo SIORG
+
+A partir da versão 0.2.0, o módulo SIP traz uma segunda tela, no item de menu `Unidades pelo SIORG`. Ela não usa arquivo: lê a estrutura do órgão na API pública do SIORG (`estruturaorganizacional.dados.gov.br`) e compara com as unidades do órgão no SIP.
+
+1. Escolha o órgão do SIP e informe o código SIORG do mesmo órgão ou entidade (por exemplo, 330683). O órgão não vira unidade: as unidades logo abaixo dele entram como raízes da hierarquia do sistema SEI.
+2. Clique em **Consultar SIORG**. A tela mostra cada unidade como nova, já importada, divergente, em conflito, inválida ou bloqueada, com o motivo.
+3. Marque o que quer e use **Importar marcadas** (unidades novas) ou **Atualizar marcadas** (sigla e nome das divergentes). As operações rodam em lotes, com progresso, e terminam num relatório com botão de imprimir.
+
+Regras que a tela aplica:
+
+- **Reconhecimento:** a unidade importada guarda o código em `id_origem`, no formato `SIORG:<código>`. Reimportar não duplica.
+- **Sigla repetida entre órgãos:** o SEI exige sigla única entre todos os órgãos. Se a sigla já existe em outro órgão, a unidade entra como `ORGAO_SIGLA` (por exemplo, `MEMP_OUVIR`).
+- **Conflito e bloqueio:** sigla já usada no órgão ou repetida na estrutura do SIORG vira conflito. A unidade abaixo de uma superior em conflito fica bloqueada até a superior estar no SIP.
+- **Tipos desmarcados por padrão:** os tipos do parâmetro `MD_CEL_SIORG_TIPOS_IGNORADOS` (na instalação, `unidade-colegiada`) vêm desmarcados.
+- **Mudança de posição na hierarquia:** só é apontada. O administrador move a unidade pelo SIP.
+- **Unidade que saiu da estrutura do órgão:** só é sinalizada. A desativação exige três passos do administrador (verificar pendências, revisar os alertas e declarar ciência, confirmar) e só acontece sem permissões de usuários, sem coordenador de unidade, sem subunidade ativa e, no SEI, sem processos abertos nem blocos pendentes.
+
+A consulta ao SEI, usada só na desativação, é feita pelo serviço `md_cel_sip` do módulo SEI deste pacote. Ela usa o endereço de web service do sistema SEI já cadastrado no SIP e a mesma autenticação da replicação entre os dois sistemas, sem chave nova.
+
+**Requisitos:** o servidor do SIP precisa alcançar `https://estruturaorganizacional.dados.gov.br` (há o parâmetro `MD_CEL_SIORG_PROXY`) e ter a extensão `curl` do PHP.
 
 ---
 
@@ -350,5 +376,7 @@ por operação, para exercitar tanto o caminho feliz quanto o processamento em l
 A versão 0.1.2 — pré-release, ainda sem uso em produção — traz classes `MdCel`, recursos por carga, scripts de release, regra de auditoria e validação do cabeçalho do arquivo enviado contra o tipo de carga selecionado; foi validada no mesmo ambiente, incluindo a atualização a partir da 0.1.0 com as permissões já concedidas e um perfil restrito a uma única carga no SEI. O perfil restrito não foi testado no SIP.
 
 Os exemplos usam só dados que já vêm na instalação padrão do SEI (órgão, unidades e usuários são criados pelo próprio módulo; cargo, assunto e hipótese legal são os nativos). Nenhum arquivo depende de cadastro manual prévio — validado contra um banco recém-instalado, sem nenhum ajuste administrativo antes da carga.
+
+A versão 0.2.0 acrescenta a tela Unidades pelo SIORG no módulo SIP e o serviço de consulta `md_cel_sip` no módulo SEI. Foi validada no mesmo ambiente pela tela real: importação de dois ministérios (82 e 215 unidades), atualização de sigla e nome, e desativação com as verificações no SIP e no SEI. Não há processo sobrestado nesse ambiente, então não foi confirmado se ele conta como processo aberto na verificação da desativação.
 
 A validação foi feita somente em MySQL. O instalador declara suporte a Oracle, SQL Server e PostgreSQL, mas esses bancos não foram testados.
