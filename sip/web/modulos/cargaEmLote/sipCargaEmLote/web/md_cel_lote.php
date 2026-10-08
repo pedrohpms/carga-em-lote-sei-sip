@@ -1,4 +1,4 @@
-<?
+<?php
 /**
  * Tela do modulo Carga em Lote (SIP): escolhe o tipo de carga, envia o .csv/.xlsx/.ods e
  * mostra o relatorio linha a linha do processamento. Incluida via
@@ -163,9 +163,46 @@ try {
   PaginaSip::getInstance()->processarExcecao($e);
 }
 
-// ETAPA 3 de 3 - renderiza a tela: formulario de upload (se nao ha carga em andamento),
-// mensagem de progresso (se ainda processando) e/ou o relatorio linha a linha (se ja existe
-// algum resultado, mesmo que parcial).
+// ETAPA 3 de 3 - renderiza a tela no desenho das telas nativas (grupos em infraAreaDados com
+// os campos posicionados por id): formulario de envio (se nao ha carga em andamento), progresso
+// (se ainda processando) e relatorio linha a linha (se ja existe algum resultado, mesmo que parcial).
+$strResultado = '';
+$numRegistros = 0;
+if ($arrResultado !== null) {
+  $numRegistros = count($arrResultado);
+  $arrTotais = [];
+  if ($arrResumoPorOperacao !== null) {
+    foreach ($arrResumoPorOperacao as $arrResumoOperacao) {
+      $arrTotais[] = $arrResumoOperacao['tally']['ok'] . ' ' . $arrResumoOperacao['rotulo'] . ' cadastrado(s), ' . $arrResumoOperacao['tally']['pulado'] . ' pulado(s) (já existiam), ' . $arrResumoOperacao['tally']['erro'] . ' com erro';
+    }
+  } else {
+    $numOk = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSipRN::STA_OK; }));
+    $numPulado = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSipRN::STA_PULADO; }));
+    $numErro = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSipRN::STA_ERRO; }));
+    $arrTotais[] = $numOk . ' cadastrado(s), ' . $numPulado . ' pulado(s) (já existiam), ' . $numErro . ' com erro';
+  }
+  $strCaptionTabela = ($bolProcessamentoConcluido ? 'Resultado' : 'Resultado parcial (até agora)') . ': ' . implode('; ', $arrTotais);
+  $strResultado .= '<table width="99%" class="infraTable" summary="Resultado da carga por linha do arquivo">' . "\n";
+  $strResultado .= '<caption class="infraCaption">' . PaginaSip::tratarHTML($strCaptionTabela) . '</caption>';
+  $strResultado .= '<tr>';
+  $strResultado .= '<th class="infraTh" width="8%">Linha</th>' . "\n";
+  $strResultado .= '<th class="infraTh" width="10%">Status</th>' . "\n";
+  $strResultado .= '<th class="infraTh">Mensagem</th>' . "\n";
+  $strResultado .= '</tr>' . "\n";
+  $strCssTr = '';
+  foreach ($arrResultado as $arrLinhaResultado) {
+    $strCssTr = ($strCssTr === '<tr class="infraTrClara">') ? '<tr class="infraTrEscura">' : '<tr class="infraTrClara">';
+    $strResultado .= $strCssTr;
+    $strResultado .= '<td align="center" valign="top">' . (int)$arrLinhaResultado['linha'] . '</td>';
+    $strResultado .= '<td align="center" valign="top">' . PaginaSip::tratarHTML($arrLinhaResultado['status']) . '</td>';
+    $strResultado .= '<td valign="top">' . PaginaSip::tratarHTML($arrLinhaResultado['mensagem']) . '</td>';
+    $strResultado .= '</tr>' . "\n";
+  }
+  $strResultado .= '</table>';
+}
+
+$strTipoEmAndamento = ($strTipoCargaEmAndamento !== null) ? ($arrTiposCarga[$strTipoCargaEmAndamento] ?? $strTipoCargaEmAndamento) : '';
+
 PaginaSip::getInstance()->montarDocType();
 PaginaSip::getInstance()->abrirHtml();
 PaginaSip::getInstance()->abrirHead();
@@ -183,135 +220,115 @@ PaginaSip::getInstance()->montarTitle(PaginaSip::getInstance()->getStrNomeSistem
 PaginaSip::getInstance()->montarStyle();
 PaginaSip::getInstance()->abrirStyle();
 ?>
-  /* Layout em fluxo normal (nao absoluto) para nao depender de adivinhar a altura real do
-     container de abrirAreaDados() - ja causou aperto visual com posicionamento absoluto. */
-  #areaCargaEmLote label {display:block;margin-top:1.5em;margin-bottom:0.4em;font-weight:bold;}
-  #areaCargaEmLote select, #areaCargaEmLote input[type=file] {display:block;margin-bottom:0.5em;}
-<?
+#lblTipoCarga {position:absolute;left:0%;top:5%;}
+#selTipoCarga {position:absolute;left:0%;top:40%;width:45%;}
+
+#lblArquivo {position:absolute;left:0%;top:5%;}
+#filArquivo {position:absolute;left:0%;top:45%;width:90%;}
+
+#lblAviso {position:absolute;left:0%;top:5%;width:90%;}
+
+#lblProcessando {position:absolute;left:0%;top:5%;}
+#lblProgresso {position:absolute;left:0%;top:40%;width:90%;}
+
+<?php
 PaginaSip::getInstance()->fecharStyle();
-// Faltava esta chamada: e ela quem inclui InfraMenu.js/InfraAcaoMenu.js (JS que monta os
-// submenus). Sem isso, o menu principal carrega mas os submenus param de funcionar so nesta
-// pagina - bug encontrado testando contra o container real.
+// E esta chamada que inclui InfraMenu.js/InfraAcaoMenu.js (JS que monta os submenus): sem ela
+// o menu principal carrega mas os submenus param de funcionar so nesta pagina.
 PaginaSip::getInstance()->montarJavaScript();
 PaginaSip::getInstance()->abrirJavaScript();
 ?>
-  function validarCargaEmLote() {
-    if (!infraSelectSelecionado('selTipoCarga')) {
-      alert('Selecione o tipo de carga.');
-      document.getElementById('selTipoCarga').focus();
-      return false;
-    }
-    if (document.getElementById('filArquivo').value == '') {
-      alert('Selecione um arquivo .csv, .xlsx ou .ods.');
-      document.getElementById('filArquivo').focus();
-      return false;
-    }
-    return true;
+function inicializar(){
+  if (document.getElementById('selTipoCarga')){
+    document.getElementById('selTipoCarga').focus();
   }
+  infraEfeitoTabelas();
+}
 
-  function OnSubmitForm() {
-    return validarCargaEmLote();
+function validarCargaEmLote() {
+  if (!infraSelectSelecionado('selTipoCarga')) {
+    alert('Selecione o tipo de carga.');
+    document.getElementById('selTipoCarga').focus();
+    return false;
   }
-<?
+  if (document.getElementById('filArquivo').value == '') {
+    alert('Selecione um arquivo .csv, .xlsx ou .ods.');
+    document.getElementById('filArquivo').focus();
+    return false;
+  }
+  return true;
+}
+
+function OnSubmitForm() {
+  return validarCargaEmLote();
+}
+
+<?php
 PaginaSip::getInstance()->fecharJavaScript();
 PaginaSip::getInstance()->fecharHead();
-PaginaSip::getInstance()->abrirBody($strTitulo);
+PaginaSip::getInstance()->abrirBody($strTitulo, 'onload="inicializar();"');
 ?>
-  <?
-  if ($bolProcessamentoConcluido) {
-  ?>
-  <form id="frmCargaEmLote" method="post" enctype="multipart/form-data" onsubmit="return OnSubmitForm();"
-        action="<?=SessaoSip::getInstance()->assinarLink('controlador.php?acao=' . $_GET['acao'])?>">
-    <?
-    $arrComandos = array();
-    $arrComandos[] = '<button type="submit" name="sbmProcessar" value="Processar" class="infraButton">Processar</button>';
-    if ($arrResultado !== null) {
-      // Mesmo mecanismo nativo de "Imprimir" (ex.: sei/web/assunto_lista.php,
-      // infra/infra_js/InfraUtil.js) - window.print() sobre uma copia do conteudo, sem
-      // depender de biblioteca de PDF: o navegador/SO oferece "salvar como PDF" na propria
-      // caixa de impressao. infraImprimirDiv() (variante mais simples de
-      // infraImprimirTabela(), sem checkbox/coluna de acoes pra remover) imprime o conteudo
-      // de um div qualquer pelo id - usado aqui em vez de infraImprimirTabela() porque nosso
-      // resultado nao esta dentro do container padrao de lista (divInfraAreaTabela). Mesma
-      // implementacao ja feita no modulo SEI, replicada aqui por consistencia.
-      $arrComandos[] = '<button type="button" id="btnImprimir" value="Imprimir" onclick="infraImprimirDiv(\'divResultadoCargaEmLote\');" class="infraButton">Imprimir</button>';
-    }
-    PaginaSip::getInstance()->montarBarraComandosSuperior($arrComandos);
-    PaginaSip::getInstance()->abrirAreaDados('30em');
-    ?>
-    <div id="areaCargaEmLote">
-    <label id="lblTipoCarga" for="selTipoCarga" class="infraLabelObrigatorio">Tipo de carga:</label>
-    <select id="selTipoCarga" name="selTipoCarga" class="infraSelect">
-      <option value="null">&nbsp;</option>
-      <?
-      foreach ($arrTiposCarga as $strChave => $strDescricaoTipo) {
-        $strSelected = ($strTipoCarga === $strChave) ? 'selected="selected"' : '';
-        echo '<option value="' . $strChave . '" ' . $strSelected . '>' . $strDescricaoTipo . '</option>';
-      }
-      ?>
-    </select>
-
-    <label id="lblArquivo" for="filArquivo" class="infraLabelObrigatorio">Arquivo (.csv, .xlsx ou .ods):</label>
-    <input type="file" id="filArquivo" name="filArquivo" accept=".csv,.xlsx,.ods"/>
-    <p style="color:#666;font-style:italic;">Isto pode demorar um pouco, dependendo da
-    quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento é
-    feito em lotes de <?=MdCelSipRN::TAMANHO_LOTE?> - esta tela se atualizará
-    periodicamente com o progresso, sozinha, até concluir. Não feche nem atualize a
-    janela manualmente enquanto isso. Tamanho máximo do arquivo: <?=ini_get('upload_max_filesize')?> (limite do PHP; o SIP não tem parâmetro próprio para isso).</p>
-    </div>
-
-    <?
-    PaginaSip::getInstance()->fecharAreaDados();
-    ?>
-  </form>
-  <?
-  } else {
-    $arrComandos = array();
-    PaginaSip::getInstance()->montarBarraComandosSuperior($arrComandos);
-    PaginaSip::getInstance()->abrirAreaDados('10em');
-    ?>
-    <p><b>Processando <?=PaginaSip::tratarHTML($arrTiposCarga[$strTipoCargaEmAndamento] ?? $strTipoCargaEmAndamento)?>...</b>
-    <?=$numLinhasProcessadas?> de <?=$numTotalLinhas?> linha(s) do arquivo já passaram pelo
-    sistema. Esta tela vai se atualizar sozinha em instantes - não feche nem atualize a
-    janela manualmente.</p>
-    <?
-    PaginaSip::getInstance()->fecharAreaDados();
-  }
-  ?>
-
-  <?
+<form id="frmCargaEmLote" method="post" enctype="multipart/form-data" onsubmit="return OnSubmitForm();" action="<?=SessaoSip::getInstance()->assinarLink('controlador.php?acao=' . $_GET['acao'] . '&acao_origem=' . $_GET['acao'])?>">
+<?php
+$arrComandos = [];
+if ($bolProcessamentoConcluido) {
+  $arrComandos[] = '<button type="submit" accesskey="P" name="sbmProcessar" value="Processar" class="infraButton"><span class="infraTeclaAtalho">P</span>rocessar</button>';
   if ($arrResultado !== null) {
-    ?>
-    <div id="divResultadoCargaEmLote">
-    <p><b><?=$bolProcessamentoConcluido ? 'Resultado:' : 'Resultado parcial (até agora):'?></b><br/>
-    <?
-    if ($arrResumoPorOperacao !== null) {
-      foreach ($arrResumoPorOperacao as $arrResumoOperacao) {
-        echo $arrResumoOperacao['tally']['ok'] . ' ' . PaginaSip::tratarHTML($arrResumoOperacao['rotulo']) . ' cadastrado(s), ' . $arrResumoOperacao['tally']['pulado'] . ' pulado(s) (já existiam), ' . $arrResumoOperacao['tally']['erro'] . ' com erro.<br/>';
-      }
-    } else {
-      $numOk = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSipRN::STA_OK; }));
-      $numPulado = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSipRN::STA_PULADO; }));
-      $numErro = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSipRN::STA_ERRO; }));
-      echo $numOk . ' cadastrado(s), ' . $numPulado . ' pulado(s) (já existiam), ' . $numErro . ' com erro.';
-    }
-    ?>
-    </p>
-    <table class="infraTable" width="100%">
-      <thead>
-        <tr><th>Linha</th><th>Status</th><th>Mensagem</th></tr>
-      </thead>
-      <tbody>
-        <?
-        foreach ($arrResultado as $arrLinhaResultado) {
-          echo '<tr><td>' . $arrLinhaResultado['linha'] . '</td><td>' . $arrLinhaResultado['status'] . '</td><td>' . PaginaSip::tratarHTML($arrLinhaResultado['mensagem']) . '</td></tr>';
-        }
-        ?>
-      </tbody>
-    </table>
-    </div>
-  <?
+    // infraImprimirDiv() imprime o conteudo de um div pelo id (window.print() sobre uma copia):
+    // o navegador/SO oferece "salvar como PDF" na propria caixa de impressao, sem biblioteca.
+    $arrComandos[] = '<button type="button" accesskey="I" id="btnImprimir" value="Imprimir" onclick="infraImprimirDiv(\'divResultadoCargaEmLote\');" class="infraButton"><span class="infraTeclaAtalho">I</span>mprimir</button>';
   }
-  PaginaSip::getInstance()->fecharBody();
-  PaginaSip::getInstance()->fecharHtml();
-  ?>
+}
+PaginaSip::getInstance()->montarBarraComandosSuperior($arrComandos);
+
+if ($bolProcessamentoConcluido) {
+?>
+  <div id="divTipoCarga" class="infraAreaDados" style="height:6em;">
+    <label id="lblTipoCarga" for="selTipoCarga" accesskey="" class="infraLabelObrigatorio">Tipo de carga:</label>
+    <select id="selTipoCarga" name="selTipoCarga" class="infraSelect" tabindex="<?=PaginaSip::getInstance()->getProxTabDados()?>">
+      <option value="null">&nbsp;</option>
+<?php
+  foreach ($arrTiposCarga as $strChave => $strDescricaoTipo) {
+    $strSelected = ($strTipoCarga === $strChave) ? 'selected="selected"' : '';
+    echo '      <option value="' . PaginaSip::tratarHTML($strChave) . '" ' . $strSelected . '>' . PaginaSip::tratarHTML($strDescricaoTipo) . '</option>' . "\n";
+  }
+?>
+    </select>
+  </div>
+
+  <div id="divArquivo" class="infraAreaDados" style="height:6em;">
+    <label id="lblArquivo" for="filArquivo" accesskey="" class="infraLabelObrigatorio">Arquivo (.csv, .xlsx ou .ods):</label>
+    <input type="file" id="filArquivo" name="filArquivo" accept=".csv,.xlsx,.ods" tabindex="<?=PaginaSip::getInstance()->getProxTabDados()?>" />
+  </div>
+
+  <div id="divAviso" class="infraAreaDados" style="height:6em;">
+    <label id="lblAviso" class="infraLabelOpcional">Isto pode demorar um pouco, dependendo da quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento é feito em lotes de <?=MdCelSipRN::TAMANHO_LOTE?>: esta tela se atualizará periodicamente com o progresso, sozinha, até concluir. Não feche nem atualize a janela manualmente enquanto isso. Tamanho máximo do arquivo: <?=PaginaSip::tratarHTML((string)ini_get('upload_max_filesize'))?> (limite do PHP; o SIP não tem parâmetro próprio para isso).</label>
+  </div>
+<?php
+} else {
+  // Carga em andamento: sem campos, so o progresso (a pagina se recarrega sozinha via
+  // <meta refresh> ate concluir).
+?>
+  <div id="divProgresso" class="infraAreaDados" style="height:6em;">
+    <label id="lblProcessando" class="infraLabelObrigatorio">Processando <?=PaginaSip::tratarHTML($strTipoEmAndamento)?>...</label>
+    <label id="lblProgresso" class="infraLabelOpcional"><?=(int)$numLinhasProcessadas?> de <?=(int)$numTotalLinhas?> linha(s) do arquivo já passaram pelo sistema. Esta tela vai se atualizar sozinha em instantes: não feche nem atualize a janela manualmente.</label>
+  </div>
+<?php
+}
+
+if ($arrResultado !== null) {
+?>
+  <br />
+  <div id="divResultadoCargaEmLote">
+<?php
+  PaginaSip::getInstance()->montarAreaTabela($strResultado, $numRegistros);
+?>
+  </div>
+<?php
+}
+?>
+</form>
+<?php
+PaginaSip::getInstance()->fecharBody();
+PaginaSip::getInstance()->fecharHtml();
+?>

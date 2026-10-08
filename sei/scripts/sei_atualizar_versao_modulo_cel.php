@@ -20,10 +20,10 @@ class MdCelAtualizadorSeiRN extends InfraRN
 {
 
     private $numSeg = 0;
-    private $versaoAtualDesteModulo = '0.2.0';
+    private $versaoAtualDesteModulo = '0.2.1';
     private $nomeDesteModulo = 'MODULO CARGA EM LOTE';
     private $nomeParametroModulo = 'MD_CEL_VERSAO';
-    private $historicoVersoes = ['0.1.1', '0.1.2', '0.2.0'];
+    private $historicoVersoes = ['0.1.1', '0.1.2', '0.2.0', '0.2.1'];
 
     public function __construct()
     {
@@ -126,6 +126,9 @@ class MdCelAtualizadorSeiRN extends InfraRN
                     // sem break
                 case '0.1.2':
                     $this->instalarv020();
+                    // sem break
+                case '0.2.0':
+                    $this->instalarv021();
                     break;
                 default:
                     $this->finalizar('A VERSAO MAIS ATUAL DO ' . $this->nomeDesteModulo . ' (v' . $this->versaoAtualDesteModulo . ') JA ESTA INSTALADA.');
@@ -178,6 +181,19 @@ class MdCelAtualizadorSeiRN extends InfraRN
     protected function instalarv020()
     {
         $nmVersao = '0.2.0';
+
+        $this->logar('EXECUTANDO A INSTALACAO/ATUALIZACAO DA VERSAO ' . $nmVersao . ' DO ' . $this->nomeDesteModulo . ' NA BASE DO SEI (sem objeto novo no banco - versao de codigo)');
+
+        $this->atualizarNumeroVersao($nmVersao);
+    }
+
+    /**
+     * Versao 0.2.1: telas no desenho das telas nativas do SEI (sem mudanca de comportamento). Nenhum
+     * objeto novo no banco: so avanca o numero de versao registrado.
+     */
+    protected function instalarv021()
+    {
+        $nmVersao = '0.2.1';
 
         $this->logar('EXECUTANDO A INSTALACAO/ATUALIZACAO DA VERSAO ' . $nmVersao . ' DO ' . $this->nomeDesteModulo . ' NA BASE DO SEI (sem objeto novo no banco - versao de codigo)');
 
