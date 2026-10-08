@@ -26,10 +26,10 @@ class MdCelAtualizadorSipRN extends InfraRN
 {
 
     private $numSeg = 0;
-    private $versaoAtualDesteModulo = '0.2.0';
+    private $versaoAtualDesteModulo = '0.2.1';
     private $nomeDesteModulo = 'MÓDULO CARGA EM LOTE';
     private $nomeParametroModulo = 'MD_CEL_VERSAO';
-    private $historicoVersoes = ['0.1.1', '0.1.2', '0.2.0'];
+    private $historicoVersoes = ['0.1.1', '0.1.2', '0.2.0', '0.2.1'];
 
     // Nome exibido na lista de perfis. So o identificador tecnico (recurso, parametro,
     // regra de auditoria) usa o prefixo MD_CEL - o nome do perfil pode ser legivel.
@@ -163,6 +163,9 @@ class MdCelAtualizadorSipRN extends InfraRN
                     // sem break
                 case '0.1.2':
                     $this->instalarv020();
+                    // sem break
+                case '0.2.0':
+                    $this->instalarv021();
                     break;
                 default:
                     $this->finalizar('A VERSÃO MAIS ATUAL DO ' . $this->nomeDesteModulo . ' (v' . $this->versaoAtualDesteModulo . ') JÁ ESTÁ INSTALADA.');
@@ -610,6 +613,19 @@ class MdCelAtualizadorSipRN extends InfraRN
 
         $objSistemaRN = new SistemaRN();
         $objSistemaRN->replicarRegraAuditoria($objReplicacaoRegraAuditoriaDTO);
+    }
+
+    /**
+     * Versão 0.2.1: telas no desenho das telas nativas do SEI (sem mudança de comportamento). Nenhum
+     * objeto novo no banco: só avança o número de versão registrado.
+     */
+    protected function instalarv021()
+    {
+        $nmVersao = '0.2.1';
+
+        $this->logar('EXECUTANDO A INSTALAÇÃO/ATUALIZAÇÃO DA VERSÃO ' . $nmVersao . ' DO ' . $this->nomeDesteModulo . ' NA BASE DO SIP (sem objeto novo no banco - versão de código)');
+
+        $this->atualizarNumeroVersao($nmVersao);
     }
 
     /**

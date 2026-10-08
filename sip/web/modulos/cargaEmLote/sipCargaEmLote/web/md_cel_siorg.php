@@ -1,4 +1,4 @@
-<?
+<?php
 /**
  * SIP > Unidades pelo SIORG (módulo Carga em Lote 0.2.0).
  *
@@ -211,13 +211,16 @@ try {
   if ($arrVerificacao !== null) {
     $arrComandos = [];
     $arrComandos[] = '<button type="submit" accesskey="V" name="sbmConsultar" value="Consultar" class="infraButton"><span class="infraTeclaAtalho">V</span>oltar sem desativar</button>';
-    $arrComandos[] = '<button type="submit" name="sbmDesativar" value="Desativar" onclick="return confirmarDesativacao();" class="infraButton">Desativar as marcadas (passo 3 de 3)</button>';
+    $arrComandos[] = '<button type="submit" accesskey="D" name="sbmDesativar" value="Desativar" onclick="return confirmarDesativacao();" class="infraButton"><span class="infraTeclaAtalho">D</span>esativar as marcadas (passo 3 de 3)</button>';
   }
   if ($arrComparacao !== null && $bolImportar) {
     $arrComandos[] = '<button type="submit" accesskey="I" name="sbmImportar" value="Importar" onclick="return confirmarImportacao();" class="infraButton"><span class="infraTeclaAtalho">I</span>mportar marcadas</button>';
   }
   if ($arrComparacao !== null && $bolAtualizar && count(array_filter(array_column($arrComparacao['unidades'], 'atualizar'))) > 0) {
-    $arrComandos[] = '<button type="submit" name="sbmAtualizar" value="Atualizar" onclick="return confirmarAtualizacao();" class="infraButton">Atualizar marcadas</button>';
+    $arrComandos[] = '<button type="submit" accesskey="A" name="sbmAtualizar" value="Atualizar" onclick="return confirmarAtualizacao();" class="infraButton"><span class="infraTeclaAtalho">A</span>tualizar marcadas</button>';
+  }
+  if ($arrComparacao !== null && $bolDesativar && count($arrComparacao['fora_da_estrutura']) > 0) {
+    $arrComandos[] = '<button type="submit" accesskey="V" name="sbmVerificarDesativacao" value="Verificar" onclick="return confirmarVerificacao();" class="infraButton"><span class="infraTeclaAtalho">V</span>erificar pendências das marcadas (passo 1 de 3)</button>';
   }
   if ($arrRelatorio !== null && !$bolEmAndamento) {
     $arrComandos[] = '<button type="button" accesskey="P" id="btnImprimir" value="Imprimir" onclick="infraImprimirDiv(\'divMdCelRelatorio\');" class="infraButton">Im<span class="infraTeclaAtalho">p</span>rimir relatório</button>';
@@ -257,20 +260,12 @@ if ($arrRelatorio !== null) {
   $numPercentual = $numTotal > 0 ? (int)floor(100 * $numFeitos / $numTotal) : 100;
 }
 
+// As classes mdCel* nas celulas de situacao nao tem estilo: sao ganchos dos roteiros de teste
+// (carga-em-lote-testes/), que leem a situacao de cada unidade na pagina.
 $strHtmlRelatorio = '';
 if ($arrRelatorio !== null) {
   ob_start();
   ?>
-  <div id="divMdCelRelatorio">
-    <h3><?=$strTituloRelatorio?><?=($bolEmAndamento ? ' (parcial)' : '')?></h3>
-    <p>
-      Órgão do SIP: <strong><?=PaginaSip::tratarHTML($arrRelatorio['orgao_sip'])?></strong><br />
-      Órgão no SIORG: <strong><?=PaginaSip::tratarHTML($arrRelatorio['orgao_siorg']['sigla'] . ' - ' . $arrRelatorio['orgao_siorg']['nome'])?></strong> (código <?=PaginaSip::tratarHTML($arrRelatorio['orgao_siorg']['codigo'])?>)<br />
-      Hierarquia de destino: <?=PaginaSip::tratarHTML($arrRelatorio['hierarquia'])?><br />
-      Operador: <?=PaginaSip::tratarHTML($arrRelatorio['usuario'])?><br />
-      Início: <?=PaginaSip::tratarHTML($arrRelatorio['inicio'])?>. Fim: <?=PaginaSip::tratarHTML($arrRelatorio['fim'] ?? 'em andamento')?><br />
-      Unidades marcadas: <?=$numTotal?>. <?=ucfirst($strFeita)?>s: <strong><?=$numImportadas?></strong>. Não <?=$strFeita?>s: <strong><?=($numFeitos - $numImportadas)?></strong><?=($bolEmAndamento ? '. Aguardando: ' . ($numTotal - $numFeitos) : '')?>.
-    </p>
     <table width="99%" class="infraTable" summary="Resultado da importação de cada unidade.">
       <caption class="infraCaption">Resultado por unidade (<?=$numFeitos?> de <?=$numTotal?>)</caption>
       <tr>
@@ -281,8 +276,12 @@ if ($arrRelatorio !== null) {
         <th class="infraTh" width="10%">Situação</th>
         <th class="infraTh" width="30%">Detalhe</th>
       </tr>
-      <? foreach ($arrRelatorio['resultado'] as $numOrdem => $arrItem) { ?>
-      <tr class="infraTrClara">
+      <?php
+      $strCssTr = '';
+      foreach ($arrRelatorio['resultado'] as $numOrdem => $arrItem) {
+        $strCssTr = ($strCssTr === '<tr class="infraTrClara">') ? '<tr class="infraTrEscura">' : '<tr class="infraTrClara">';
+        echo $strCssTr;
+        ?>
         <td align="center"><?=($numOrdem + 1)?></td>
         <td align="center"><?=PaginaSip::tratarHTML($arrItem['codigo'])?></td>
         <td><?=PaginaSip::tratarHTML($arrItem['sigla'])?></td>
@@ -290,12 +289,41 @@ if ($arrRelatorio !== null) {
         <td align="center" class="<?=($arrItem['sucesso'] ? 'mdCelNOVA' : 'mdCelINVALIDA')?>"><?=($arrItem['sucesso'] ? ucfirst($strFeita) : 'Não ' . $strFeita)?></td>
         <td><?=PaginaSip::tratarHTML($arrItem['mensagem'])?></td>
       </tr>
-      <? } ?>
+      <?php } ?>
     </table>
-    <p class="mdCelAjuda">Cada unidade <?=$strFeita?> fica registrada também na auditoria do SIP (recurso <?=$strRecursoRelatorio?>).<?=($bolRelatorioDesativacao ? ' A reativação é manual, no SIP: a unidade (Unidades &gt; Reativar) e a posição na hierarquia (Hierarquias).' : '')?></p>
+  <?php
+  $strTabelaRelatorio = ob_get_clean();
+  ob_start();
+  ?>
+  <div id="divMdCelRelatorio">
+<?php PaginaSip::getInstance()->abrirAreaDados(); ?>
+    <label id="lblTituloRelatorio" class="infraLabelObrigatorio"><?=$strTituloRelatorio?><?=($bolEmAndamento ? ' (parcial)' : '')?></label><br />
+    <label id="lblDadosRelatorio" class="infraLabelOpcional">
+      Órgão do SIP: <strong><?=PaginaSip::tratarHTML($arrRelatorio['orgao_sip'])?></strong><br />
+      Órgão no SIORG: <strong><?=PaginaSip::tratarHTML($arrRelatorio['orgao_siorg']['sigla'] . ' - ' . $arrRelatorio['orgao_siorg']['nome'])?></strong> (código <?=PaginaSip::tratarHTML($arrRelatorio['orgao_siorg']['codigo'])?>)<br />
+      Hierarquia de destino: <?=PaginaSip::tratarHTML($arrRelatorio['hierarquia'])?><br />
+      Operador: <?=PaginaSip::tratarHTML($arrRelatorio['usuario'])?><br />
+      Início: <?=PaginaSip::tratarHTML($arrRelatorio['inicio'])?>. Fim: <?=PaginaSip::tratarHTML($arrRelatorio['fim'] ?? 'em andamento')?><br />
+      Unidades marcadas: <?=$numTotal?>. <?=ucfirst($strFeita)?>s: <strong><?=$numImportadas?></strong>. Não <?=$strFeita?>s: <strong><?=($numFeitos - $numImportadas)?></strong><?=($bolEmAndamento ? '. Aguardando: ' . ($numTotal - $numFeitos) : '')?>.
+    </label>
+<?php
+  PaginaSip::getInstance()->fecharAreaDados();
+  PaginaSip::getInstance()->montarAreaTabela($strTabelaRelatorio, $numFeitos, true);
+?>
+    <label id="lblAuditoriaRelatorio" class="infraLabelOpcional">Cada unidade <?=$strFeita?> fica registrada também na auditoria do SIP (recurso <?=$strRecursoRelatorio?>).<?=($bolRelatorioDesativacao ? ' A reativação é manual, no SIP: a unidade (Unidades &gt; Reativar) e a posição na hierarquia (Hierarquias).' : '')?></label>
   </div>
-  <?
+  <?php
   $strHtmlRelatorio = ob_get_clean();
+}
+
+// Avisos da comparacao no componente de mensagem do SEI, mostrado ao abrir o corpo da pagina.
+if ($arrComparacao !== null && !$bolEmAndamento) {
+  if ($strSiglaOrgaoSip !== '' && strtoupper($strSiglaOrgaoSip) !== strtoupper($arrComparacao['orgao']['sigla'])) {
+    PaginaSip::getInstance()->adicionarMensagem('A sigla do órgão no SIP (' . $strSiglaOrgaoSip . ') é diferente da sigla no SIORG (' . $arrComparacao['orgao']['sigla'] . '). Confira se o código informado é do mesmo órgão.', PaginaSip::$TIPO_MSG_AVISO);
+  }
+  if ($arrComparacao['fora_do_orgao'] > 0) {
+    PaginaSip::getInstance()->adicionarMensagem((int)$arrComparacao['fora_do_orgao'] . ' unidade(s) da estrutura pertencem a outro órgão ou entidade (vinculadas) e ficaram de fora.', PaginaSip::$TIPO_MSG_AVISO);
+  }
 }
 
 PaginaSip::getInstance()->montarDocType();
@@ -310,34 +338,34 @@ PaginaSip::getInstance()->montarTitle(PaginaSip::getInstance()->getStrNomeSistem
 PaginaSip::getInstance()->montarStyle();
 PaginaSip::getInstance()->abrirStyle();
 ?>
-div.mdCelLinha {margin:.6em 0;}
-div.mdCelLinha label {display:block; margin-bottom:.2em;}
-#selOrgao {width:50%;}
-#txtCodigoOrgao {width:12em;}
-div.mdCelAviso {border:1px solid #b9770e; background:#fdf2e9; padding:.4em .6em; margin:.4em 0;}
-span.mdCelAjuda, p.mdCelAjuda {color:#555; font-size:.9em;}
-tr.mdCelApagada td {color:#888;}
-td.mdCelNOVA {color:#1e8449; font-weight:bold;}
-td.mdCelDIVERGENTE, td.mdCelCONFLITO, td.mdCelBLOQUEADA {color:#b9770e; font-weight:bold;}
-td.mdCelINVALIDA {color:#c0392b; font-weight:bold;}
-div.mdCelAlerta {border:2px solid #c0392b; background:#fdedec; padding:.5em .8em; margin:.6em 0;}
-div.mdCelAlerta ol {margin:.3em 0 .3em 1.2em; padding:0;}
-div.mdCelCiente {border:1px solid #c0392b; padding:.5em .8em; margin:.6em 0; font-weight:bold;}
-div.mdCelBarra {border:1px solid #999; background:#eee; height:1.4em; width:60%; margin:.4em 0 1em 0;}
-div.mdCelBarra div {background:#1e8449; height:100%;}
-div#divMdCelRelatorio {margin:1em 0;}
-div#divMdCelRelatorio h3 {margin:.2em 0 .4em 0;}
-<?
+#lblOrgao {position:absolute;left:0%;top:5%;}
+#selOrgao {position:absolute;left:0%;top:40%;width:50%;}
+
+#lblCodigoOrgao {position:absolute;left:0%;top:5%;}
+#txtCodigoOrgao {position:absolute;left:0%;top:27%;width:15%;}
+#lblAjudaCodigo {position:absolute;left:0%;top:58%;width:90%;}
+
+#lblCiente {margin-left:.3em;}
+
+<?php
 PaginaSip::getInstance()->fecharStyle();
 PaginaSip::getInstance()->montarJavaScript();
 PaginaSip::getInstance()->abrirJavaScript();
 ?>
 //<script>
-function marcarTodas(marcar){
-  var caixas = document.querySelectorAll('input.mdCelCodigo');
-  for (var i = 0; i < caixas.length; i++){
-    if (!caixas[i].disabled){ caixas[i].checked = marcar; }
+function inicializar(){
+  if (document.getElementById('selOrgao')){
+    document.getElementById('selOrgao').focus();
   }
+  infraEfeitoTabelas();
+}
+// Marca todas as caixas habilitadas da classe; se ja estao todas marcadas, desmarca (como o
+// "Selecionar Tudo" do cabecalho das listas nativas).
+function marcarTodas(classe){
+  var caixas = document.querySelectorAll('input.' + classe + ':not(:disabled)');
+  var marcar = false;
+  for (var i = 0; i < caixas.length; i++){ if (!caixas[i].checked){ marcar = true; } }
+  for (var i = 0; i < caixas.length; i++){ caixas[i].checked = marcar; }
 }
 function confirmarVerificacao(){
   if (document.querySelectorAll('input.mdCelSinalizada:checked').length == 0){
@@ -380,56 +408,57 @@ function confirmarImportacao(){
   return confirm('Confirma a importação de ' + marcadas + ' unidade(s) para o SIP?');
 }
 //</script>
-<?
+<?php
 PaginaSip::getInstance()->fecharJavaScript();
 PaginaSip::getInstance()->fecharHead();
-PaginaSip::getInstance()->abrirBody($strTitulo);
+PaginaSip::getInstance()->abrirBody($strTitulo, 'onload="inicializar();"');
 
 if ($bolEmAndamento) {
   PaginaSip::getInstance()->montarBarraComandosSuperior([]);
+  PaginaSip::getInstance()->abrirAreaDados();
   ?>
-  <p><strong><?=$strTituloRelatorio?> em andamento:</strong> <?=$numFeitos?> de <?=$numTotal?> unidade(s) processada(s) (<?=$numPercentual?>%), <?=$numImportadas?> <?=$strFeita?>(s) até agora.
-  A tela se atualiza sozinha a cada lote de <?=MdCelSipSiorgRN::TAMANHO_LOTE?> unidades. Não feche nem atualize a janela até o fim; o relatório para imprimir aparece ao concluir.</p>
-  <div class="mdCelBarra" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?=$numPercentual?>"><div style="width:<?=$numPercentual?>%;"></div></div>
-  <?
+  <label id="lblAndamento" class="infraLabelObrigatorio"><?=$strTituloRelatorio?> em andamento:</label><br />
+  <label id="lblProgresso" class="infraLabelOpcional"><?=$numFeitos?> de <?=$numTotal?> unidade(s) processada(s) (<?=$numPercentual?>%), <?=$numImportadas?> <?=$strFeita?>(s) até agora.
+  A tela se atualiza sozinha a cada lote de <?=MdCelSipSiorgRN::TAMANHO_LOTE?> unidades. Não feche nem atualize a janela até o fim; o relatório para imprimir aparece ao concluir.</label>
+  <?php
+  PaginaSip::getInstance()->fecharAreaDados();
   echo $strHtmlRelatorio;
 } else {
 ?>
 <form id="frmMdCelSiorg" method="post" action="<?=SessaoSip::getInstance()->assinarLink('controlador.php?acao=' . MdCelSipIntegracao::ACAO_SIORG . '&acao_origem=' . MdCelSipIntegracao::ACAO_SIORG)?>">
-  <?
+  <?php
   PaginaSip::getInstance()->montarBarraComandosSuperior($arrComandos);
   ?>
-  <div class="mdCelLinha">
-    <label for="selOrgao" class="infraLabelObrigatorio">Órgão do SIP que recebe as unidades:</label>
-    <select id="selOrgao" name="selOrgao" class="infraSelect"><?=$strOptionsOrgao?></select>
+  <div id="divOrgao" class="infraAreaDados" style="height:6em;">
+    <label id="lblOrgao" for="selOrgao" accesskey="" class="infraLabelObrigatorio">Órgão do SIP que recebe as unidades:</label>
+    <select id="selOrgao" name="selOrgao" class="infraSelect" tabindex="<?=PaginaSip::getInstance()->getProxTabDados()?>"><?=$strOptionsOrgao?></select>
   </div>
-  <div class="mdCelLinha">
-    <label for="txtCodigoOrgao" class="infraLabelObrigatorio">Código SIORG do mesmo órgão ou entidade <span class="mdCelAjuda">(ex.: 330683 para o Ministério do Empreendedorismo; consulte em estruturaorganizacional.dados.gov.br). O órgão não vira unidade: as unidades logo abaixo dele entram como raízes da hierarquia</span>:</label>
-    <input type="text" id="txtCodigoOrgao" name="txtCodigoOrgao" class="infraText" maxlength="12" value="<?=PaginaSip::tratarHTML($strCodigoOrgao)?>" />
+  <div id="divCodigoOrgao" class="infraAreaDados" style="height:10em;">
+    <label id="lblCodigoOrgao" for="txtCodigoOrgao" accesskey="" class="infraLabelObrigatorio">Código SIORG do mesmo órgão ou entidade:</label>
+    <input type="text" id="txtCodigoOrgao" name="txtCodigoOrgao" class="infraText" maxlength="12" value="<?=PaginaSip::tratarHTML($strCodigoOrgao)?>" tabindex="<?=PaginaSip::getInstance()->getProxTabDados()?>" />
+    <label id="lblAjudaCodigo" class="infraLabelOpcional">Ex.: 330683 para o Ministério do Empreendedorismo; consulte em estruturaorganizacional.dados.gov.br. O órgão não vira unidade: as unidades logo abaixo dele entram como raízes da hierarquia.</label>
   </div>
 
   <?=$strHtmlRelatorio?>
 
-  <? if ($arrComparacao !== null) { ?>
-  <p>
+  <?php if ($arrComparacao !== null) { ?>
+  <?php PaginaSip::getInstance()->abrirAreaDados(); ?>
+  <label id="lblDadosOrgao" class="infraLabelOpcional">
     Órgão no SIORG: <strong><?=PaginaSip::tratarHTML($arrComparacao['orgao']['sigla'] . ' - ' . $arrComparacao['orgao']['nome'])?></strong>
     (<?=PaginaSip::tratarHTML($arrComparacao['orgao']['tipo'])?>, código <?=PaginaSip::tratarHTML($arrComparacao['orgao']['codigo'])?>), que corresponde ao órgão escolhido no SIP e não é cadastrado como unidade.
     Hierarquia de destino: <strong><?=PaginaSip::tratarHTML((string)$arrComparacao['hierarquia'])?></strong> (a do sistema SEI).
     Tipos desmarcados por padrão: <strong><?=PaginaSip::tratarHTML(count($arrTiposIgnorados) > 0 ? implode(', ', $arrTiposIgnorados) : 'nenhum')?></strong>
-    <span class="mdCelAjuda">(parâmetro MD_CEL_SIORG_TIPOS_IGNORADOS em Infra &gt; Parâmetros)</span>.
+    (parâmetro MD_CEL_SIORG_TIPOS_IGNORADOS em Infra &gt; Parâmetros).
     Sigla já usada em outro órgão entra composta com a sigla do órgão no SIP (<?=PaginaSip::tratarHTML(($strSiglaOrgaoSip !== '' ? $strSiglaOrgaoSip : 'ORGAO') . '_SIGLA')?>), porque o SEI exige sigla única entre órgãos.
-    <a href="javascript:marcarTodas(true);">Marcar todas as novas</a> | <a href="javascript:marcarTodas(false);">Desmarcar todas</a>
-  </p>
-  <? if ($strSiglaOrgaoSip !== '' && strtoupper($strSiglaOrgaoSip) !== strtoupper($arrComparacao['orgao']['sigla'])) { ?>
-  <div class="mdCelAviso">A sigla do órgão no SIP (<?=PaginaSip::tratarHTML($strSiglaOrgaoSip)?>) é diferente da sigla no SIORG (<?=PaginaSip::tratarHTML($arrComparacao['orgao']['sigla'])?>). Confira se o código informado é do mesmo órgão.</div>
-  <? } ?>
-  <? if ($arrComparacao['fora_do_orgao'] > 0) { ?>
-  <div class="mdCelAviso"><?=(int)$arrComparacao['fora_do_orgao']?> unidade(s) da estrutura pertencem a outro órgão ou entidade (vinculadas) e ficaram de fora.</div>
-  <? } ?>
+  </label>
+  <?php
+  PaginaSip::getInstance()->fecharAreaDados();
+  ob_start();
+  ?>
   <table width="99%" class="infraTable" summary="Estrutura do SIORG comparada com o SIP.">
     <caption class="infraCaption">Estrutura do SIORG (<?=count($arrComparacao['unidades'])?> unidades)</caption>
     <tr>
-      <th class="infraTh" width="1%"></th>
+      <th class="infraTh" width="1%"><a href="javascript:void(0);" onclick="marcarTodas('mdCelCodigo');" tabindex="<?=PaginaSip::getInstance()->getProxTabTabela()?>"><img src="<?=PaginaSip::getInstance()->getIconeCheck()?>" title="Selecionar todas as novas" alt="Selecionar todas as novas" class="infraImg" /></a></th>
       <th class="infraTh" width="8%">Código</th>
       <th class="infraTh" width="14%">Tipo</th>
       <th class="infraTh" width="14%">Sigla</th>
@@ -437,7 +466,8 @@ if ($bolEmAndamento) {
       <th class="infraTh" width="9%">Situação</th>
       <th class="infraTh" width="22%">Detalhe</th>
     </tr>
-    <?
+    <?php
+    $strCssTr = '';
     foreach ($arrComparacao['unidades'] as $arrUnidade) {
       $bolNova = ($arrUnidade['situacao'] === MdCelSipSiorgRN::SITUACAO_NOVA);
       $bolTipoIgnorado = in_array($arrUnidade['tipo'], $arrTiposIgnorados, true);
@@ -451,13 +481,14 @@ if ($bolEmAndamento) {
       if ($bolNova && $bolTipoIgnorado) {
         $strDetalhe = 'desmarcada por padrão (tipo ' . $arrUnidade['tipo'] . ')' . ($strDetalhe !== '' ? '; se marcada, ' . $strDetalhe : '');
       }
+      $strCssTr = ($strCssTr === '<tr class="infraTrClara">') ? '<tr class="infraTrEscura">' : '<tr class="infraTrClara">';
+      echo $strCssTr;
       ?>
-      <tr class="<?=($bolNova && !$bolTipoIgnorado ? 'infraTrClara' : 'infraTrClara mdCelApagada')?>">
-        <? if (!empty($arrUnidade['atualizar']) && $bolAtualizar) { ?>
-        <td align="center"><input type="checkbox" class="infraCheckbox mdCelAtualizar" name="chkAtualizar[]" value="<?=$strCodigo?>" title="Atualizar para <?=PaginaSip::tratarHTML($arrUnidade['atualizar']['sigla'] . ' - ' . $arrUnidade['nome'])?>" /></td>
-        <? } else { ?>
-        <td align="center"><input type="checkbox" class="infraCheckbox mdCelCodigo" name="chkCodigo[]" value="<?=$strCodigo?>"<?=($bolMarcada ? ' checked="checked"' : '')?><?=($bolNova && $bolImportar ? '' : ' disabled="disabled"')?> /></td>
-        <? } ?>
+        <?php if (!empty($arrUnidade['atualizar']) && $bolAtualizar) { ?>
+        <td align="center"><input type="checkbox" class="infraCheckbox mdCelAtualizar" name="chkAtualizar[]" value="<?=$strCodigo?>" title="Atualizar para <?=PaginaSip::tratarHTML($arrUnidade['atualizar']['sigla'] . ' - ' . $arrUnidade['nome'])?>" tabindex="<?=PaginaSip::getInstance()->getProxTabTabela()?>" /></td>
+        <?php } else { ?>
+        <td align="center"><input type="checkbox" class="infraCheckbox mdCelCodigo" name="chkCodigo[]" value="<?=$strCodigo?>"<?=($bolMarcada ? ' checked="checked"' : '')?><?=($bolNova && $bolImportar ? '' : ' disabled="disabled"')?> tabindex="<?=PaginaSip::getInstance()->getProxTabTabela()?>" /></td>
+        <?php } ?>
         <td align="center"><?=$strCodigo?></td>
         <td><?=PaginaSip::tratarHTML($arrUnidade['tipo'])?></td>
         <td style="padding-left:<?=(0.3 + 1.2 * (int)$arrUnidade['nivel'])?>em;"><?=PaginaSip::tratarHTML($arrUnidade['sigla'])?></td>
@@ -465,47 +496,58 @@ if ($bolEmAndamento) {
         <td align="center" class="mdCel<?=PaginaSip::tratarHTML($arrUnidade['situacao'])?>"><?=PaginaSip::tratarHTML($arrRotuloSituacao[$arrUnidade['situacao']] ?? $arrUnidade['situacao'])?></td>
         <td><?=PaginaSip::tratarHTML($strDetalhe)?></td>
       </tr>
-    <? } ?>
+    <?php } ?>
   </table>
+  <?php
+  PaginaSip::getInstance()->montarAreaTabela(ob_get_clean(), count($arrComparacao['unidades']));
+  ?>
 
-  <? if (count($arrComparacao['fora_da_estrutura']) > 0) { ?>
-  <div class="mdCelAlerta">
+  <?php if (count($arrComparacao['fora_da_estrutura']) > 0) { ?>
+  <?php PaginaSip::getInstance()->abrirAreaDados(); ?>
+  <label id="lblSinalizadas" class="infraLabelOpcional">
     <strong><?=count($arrComparacao['fora_da_estrutura'])?> unidade(s) sinalizada(s) para desativação:</strong> estão ativas neste órgão do SIP com código SIORG, mas não aparecem mais na estrutura do órgão no SIORG.
     Nada é desativado sem o aval do administrador, em três passos: (1) marcar e verificar pendências no SIP e no SEI; (2) revisar os alertas, marcar as aptas e declarar ciência; (3) confirmar a desativação.
-  </div>
+    <?=($bolDesativar ? 'O passo 1 só consulta o SIP e o SEI; não altera nada.' : 'A desativação exige o recurso md_cel_siorg_unidade_desativar.')?>
+  </label>
+  <?php
+  PaginaSip::getInstance()->fecharAreaDados();
+  ob_start();
+  ?>
   <table width="99%" class="infraTable" summary="Unidades sinalizadas para desativação.">
     <caption class="infraCaption">Unidades sinalizadas para desativação (<?=count($arrComparacao['fora_da_estrutura'])?>)</caption>
     <tr>
-      <th class="infraTh" width="1%"></th>
+      <th class="infraTh" width="1%">&nbsp;</th>
       <th class="infraTh" width="8%">Código SIORG</th>
       <th class="infraTh" width="13%">Sigla no SIP</th>
       <th class="infraTh">Nome</th>
       <th class="infraTh" width="12%">Superior no SIP</th>
       <th class="infraTh" width="30%">Motivo</th>
     </tr>
-    <? foreach ($arrComparacao['fora_da_estrutura'] as $arrUnidade) { ?>
-    <tr class="infraTrClara">
-      <td align="center"><input type="checkbox" class="infraCheckbox mdCelSinalizada" name="chkDesativar[]" value="<?=(int)$arrUnidade['id_unidade']?>"<?=($bolDesativar ? '' : ' disabled="disabled"')?> /></td>
+    <?php
+    $strCssTr = '';
+    foreach ($arrComparacao['fora_da_estrutura'] as $arrUnidade) {
+      $strCssTr = ($strCssTr === '<tr class="infraTrClara">') ? '<tr class="infraTrEscura">' : '<tr class="infraTrClara">';
+      echo $strCssTr;
+      ?>
+      <td align="center"><input type="checkbox" class="infraCheckbox mdCelSinalizada" name="chkDesativar[]" value="<?=(int)$arrUnidade['id_unidade']?>"<?=($bolDesativar ? '' : ' disabled="disabled"')?> tabindex="<?=PaginaSip::getInstance()->getProxTabTabela()?>" /></td>
       <td align="center"><?=PaginaSip::tratarHTML($arrUnidade['codigo'])?></td>
       <td><?=PaginaSip::tratarHTML($arrUnidade['sigla'])?></td>
       <td><?=PaginaSip::tratarHTML($arrUnidade['nome'])?></td>
       <td><?=PaginaSip::tratarHTML($arrUnidade['superior'])?></td>
       <td><?=PaginaSip::tratarHTML($arrUnidade['motivo'])?></td>
     </tr>
-    <? } ?>
+    <?php } ?>
   </table>
-  <? if ($bolDesativar) { ?>
-  <p><button type="submit" name="sbmVerificarDesativacao" value="Verificar" onclick="return confirmarVerificacao();" class="infraButton">Verificar pendências das marcadas (passo 1 de 3)</button>
-  <span class="mdCelAjuda">Só consulta o SIP e o SEI; não altera nada.</span></p>
-  <? } else { ?>
-  <p class="mdCelAjuda">A desativação exige o recurso md_cel_siorg_unidade_desativar.</p>
-  <? } ?>
-  <? } ?>
-  <? } ?>
+  <?php
+  PaginaSip::getInstance()->montarAreaTabela(ob_get_clean(), count($arrComparacao['fora_da_estrutura']));
+  ?>
+  <?php } ?>
+  <?php } ?>
 
-  <? if ($arrVerificacao !== null) { ?>
-  <h3>Desativação de unidades: revisão (passo 2 de 3)</h3>
-  <div class="mdCelAlerta">
+  <?php if ($arrVerificacao !== null) { ?>
+  <?php PaginaSip::getInstance()->abrirAreaDados(); ?>
+  <label id="lblRevisao" class="infraLabelObrigatorio">Desativação de unidades: revisão (passo 2 de 3)</label><br />
+  <label id="lblAlertas" class="infraLabelOpcional">
     <strong>Leia antes de continuar.</strong>
     <ol>
       <li>A desativação vale para o SIP e para o SEI: a unidade deixa de aparecer para login, para envio de processos e nas listas de unidades.</li>
@@ -516,39 +558,54 @@ if ($bolEmAndamento) {
       <li>A reativação é manual, no SIP: a unidade (Unidades &gt; Reativar) e a posição na hierarquia (Hierarquias).</li>
       <li>Cada desativação fica registrada na auditoria do SIP. Imprima o relatório ao fim: ele é o registro do que foi e do que não foi desativado.</li>
     </ol>
-  </div>
-  <p>Órgão no SIORG: <strong><?=PaginaSip::tratarHTML($arrVerificacao['orgao']['sigla'] . ' - ' . $arrVerificacao['orgao']['nome'])?></strong> (código <?=PaginaSip::tratarHTML($arrVerificacao['orgao']['codigo'])?>). Hierarquia: <?=PaginaSip::tratarHTML((string)$arrVerificacao['hierarquia'])?>.</p>
+    Órgão no SIORG: <strong><?=PaginaSip::tratarHTML($arrVerificacao['orgao']['sigla'] . ' - ' . $arrVerificacao['orgao']['nome'])?></strong> (código <?=PaginaSip::tratarHTML($arrVerificacao['orgao']['codigo'])?>). Hierarquia: <?=PaginaSip::tratarHTML((string)$arrVerificacao['hierarquia'])?>.
+  </label>
+  <?php
+  PaginaSip::getInstance()->fecharAreaDados();
+  ob_start();
+  ?>
   <table width="99%" class="infraTable" summary="Verificação das unidades para desativação.">
     <caption class="infraCaption">Verificação (<?=count($arrVerificacao['unidades'])?> unidade(s), na ordem de desativação)</caption>
     <tr>
-      <th class="infraTh" width="1%"></th>
+      <th class="infraTh" width="1%">&nbsp;</th>
       <th class="infraTh" width="8%">Código SIORG</th>
       <th class="infraTh" width="13%">Sigla no SIP</th>
       <th class="infraTh">Nome</th>
       <th class="infraTh" width="10%">Situação</th>
       <th class="infraTh" width="35%">Pendências e avisos</th>
     </tr>
-    <? foreach ($arrVerificacao['unidades'] as $arrUnidade) { ?>
-    <tr class="<?=($arrUnidade['apta'] ? 'infraTrClara' : 'infraTrClara mdCelApagada')?>">
-      <td align="center"><input type="checkbox" class="infraCheckbox mdCelDesativar" name="chkDesativar[]" value="<?=(int)$arrUnidade['id_unidade']?>" data-sigla="<?=PaginaSip::tratarHTML($arrUnidade['sigla'])?>"<?=($arrUnidade['apta'] ? ' checked="checked"' : ' disabled="disabled"')?> /></td>
+    <?php
+    $strCssTr = '';
+    foreach ($arrVerificacao['unidades'] as $arrUnidade) {
+      $strCssTr = ($strCssTr === '<tr class="infraTrClara">') ? '<tr class="infraTrEscura">' : '<tr class="infraTrClara">';
+      echo $strCssTr;
+      ?>
+      <td align="center"><input type="checkbox" class="infraCheckbox mdCelDesativar" name="chkDesativar[]" value="<?=(int)$arrUnidade['id_unidade']?>" data-sigla="<?=PaginaSip::tratarHTML($arrUnidade['sigla'])?>"<?=($arrUnidade['apta'] ? ' checked="checked"' : ' disabled="disabled"')?> tabindex="<?=PaginaSip::getInstance()->getProxTabTabela()?>" /></td>
       <td align="center"><?=PaginaSip::tratarHTML($arrUnidade['codigo'])?></td>
       <td><?=PaginaSip::tratarHTML($arrUnidade['sigla'])?></td>
       <td><?=PaginaSip::tratarHTML($arrUnidade['nome'])?></td>
       <td align="center" class="<?=($arrUnidade['apta'] ? 'mdCelNOVA' : 'mdCelINVALIDA')?>"><?=($arrUnidade['apta'] ? 'Apta' : 'Com pendências')?></td>
       <td><?=PaginaSip::tratarHTML(implode('; ', array_merge($arrUnidade['pendencias'], $arrUnidade['avisos'])) ?: 'nenhuma pendência no SIP nem no SEI')?></td>
     </tr>
-    <? } ?>
+    <?php } ?>
   </table>
-  <div class="mdCelCiente">
-    <input type="checkbox" class="infraCheckbox" id="chkCiente" name="chkCiente" value="S" />
-    <label for="chkCiente">Li os alertas acima e confirmo que as unidades marcadas saíram da estrutura do órgão e devem ser desativadas no SIP e no SEI.</label>
+  <?php
+  PaginaSip::getInstance()->montarAreaTabela(ob_get_clean(), count($arrVerificacao['unidades']));
+  PaginaSip::getInstance()->abrirAreaDados('3em');
+  ?>
+  <div id="divCiente" class="infraDivCheckbox">
+    <input type="checkbox" class="infraCheckbox" id="chkCiente" name="chkCiente" value="S" tabindex="<?=PaginaSip::getInstance()->getProxTabDados()?>" />
+    <label id="lblCiente" for="chkCiente" accesskey="" class="infraLabelCheckbox">Li os alertas acima e confirmo que as unidades marcadas saíram da estrutura do órgão e devem ser desativadas no SIP e no SEI.</label>
   </div>
-  <? } ?>
-  <?
+  <?php
+  PaginaSip::getInstance()->fecharAreaDados();
+  ?>
+  <?php } ?>
+  <?php
   PaginaSip::getInstance()->montarBarraComandosInferior($arrComandos);
   ?>
 </form>
-<?
+<?php
 }
 PaginaSip::getInstance()->fecharBody();
 PaginaSip::getInstance()->fecharHtml();
