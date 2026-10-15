@@ -140,6 +140,15 @@ Além do recurso do módulo, o operador precisa dos recursos das regras de negó
 
 Cada linha é gravada em uma transação própria. Se uma linha falha, nada dela permanece no banco, nem as gravações parciais feitas antes do erro, e as demais linhas seguem normalmente. O relatório mostra a mensagem de erro de cada linha com falha.
 
+<a name="simulacao"></a>
+### Simular uma carga (SEI)
+
+Nas quatro cargas do SEI, a tela tem a opção **Apenas simular: mostra o resultado esperado e não grava nada**. Com ela marcada, o módulo roda a carga inteira, mostra o relatório linha a linha (o título da tabela diz "Simulação, nada foi gravado") e desfaz tudo no fim. Para gravar de verdade, desmarque a opção e envie o mesmo arquivo.
+
+Como funciona: a simulação abre uma transação no banco do SEI antes da primeira linha e a cancela no fim. As regras do SEI chamadas por dentro entram nessa transação, então uma linha repetida no mesmo arquivo aparece como PULADO, como na carga real. Por isso ela processa o arquivo inteiro de uma vez, em até 500 linhas (`MdCelSeiRN::LIMITE_SIMULACAO`), e não em lotes de 50. Acima disso, a tela recusa e pede para simular uma parte do arquivo.
+
+Limites: as cargas do SIP e a tela Unidades pelo SIORG não têm simulação, porque o cadastro no SIP replica unidades e usuários para o SEI por um serviço do SEI, e essa parte não volta com o desfazer do banco. A simulação desfaz o que o módulo grava no banco do SEI: um módulo de terceiros que reaja à gravação com chamada externa não participa do desfazer. A trilha de auditoria registra a simulação, com a marca `simulacao` nos parâmetros do lote.
+
 <a name="arquivo-tipo-errado"></a>
 ### Arquivo não corresponde ao tipo de carga selecionado
 
@@ -382,5 +391,7 @@ Os exemplos usam só dados que já vêm na instalação padrão do SEI (órgão,
 A versão 0.2.0 acrescenta a tela Unidades pelo SIORG no módulo SIP e o serviço de consulta `md_cel_sip` no módulo SEI. Foi validada no mesmo ambiente pela tela real: importação de dois ministérios (82 e 215 unidades), atualização de sigla e nome, e desativação com as verificações no SIP e no SEI. Não há processo sobrestado nesse ambiente, então não foi confirmado se ele conta como processo aberto na verificação da desativação.
 
 A versão 0.2.1 refaz as três telas no desenho das telas nativas do SEI e do SIP (campos e botões nas mesmas posições e componentes, tabela de resultado no formato das listas, aviso pelo componente de mensagem), sem mudar o comportamento nem criar objeto novo no banco. Foi conferida por captura de tela em um navegador, em cada estado das telas (formulário, progresso, resultado, consulta do SIORG, revisão da desativação). O perfil restrito foi testado pela tela nos dois sistemas: no SEI, com uma única carga liberada, o seletor mostra só ela; no SIP, as cargas são combinadas e só aparecem com os dois recursos (por exemplo, cadastrar usuário e dar permissão). Não foi conferida por captura a tela de erro da validação do arquivo.
+
+A versão 0.3.0 acrescenta a opção de simulação nas quatro cargas do SEI. Foi validada pela tela real: o banco ficou igual depois de simular cada carga (contagens e hash dos registros), a linha repetida no arquivo aparece como PULADO, o teto de 500 linhas recusa o arquivo maior, e o modo normal segue igual (lotes de 50, PULADO e ERRO). O roteiro está em `carga-em-lote-testes/simulacao.py` no laboratório de origem. A simulação não foi testada com perfil restrito nem fora do MySQL.
 
 A validação foi feita somente em MySQL. O instalador declara suporte a Oracle, SQL Server e PostgreSQL, mas esses bancos não foram testados.

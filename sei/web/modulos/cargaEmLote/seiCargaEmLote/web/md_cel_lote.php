@@ -53,8 +53,10 @@ $numTotalLinhas = null;
 $numLinhasProcessadas = null;
 $bolProcessamentoConcluido = true; // true = sem carga em andamento (tela normal, form visivel)
 $strTipoCargaEmAndamento = null;
+$bolSimulacao = false;    // true = a carga que acabou foi uma simulacao (nada gravado)
 
 $strTipoCarga = PaginaSEI::POST('selTipoCarga');
+$bolSimular = (PaginaSEI::POST('chkSimular') === 'S');
 
 // Mesmo padrao de sei/web/assunto_cadastro.php ($strDisplayClassificacao): calcula o estado
 // inicial de exibicao no servidor (evita "flash" do campo antes do JS rodar, cobre tambem o
@@ -122,6 +124,7 @@ try {
     // duplicar a logica de chamada da RN).
     $_SESSION[CHAVE_ESTADO_SESSAO] = array(
       'tipoCarga' => $strTipoCarga,
+      'simular' => $bolSimular,
       'arquivo' => $strArquivoTemp,
       'nomeTabela' => ($strTipoCarga === 'assuntos') ? ((PaginaSEI::POST('selTabelaAssuntos') !== 'null') ? PaginaSEI::POST('selTabelaAssuntos') : null) : null,
       'offset' => 0,
@@ -142,7 +145,9 @@ try {
       $arrParametrosChamada = array(
         'csv' => $arrEstado['arquivo'],
         'offset' => $arrEstado['offset'],
-        'limite' => MdCelSeiRN::TAMANHO_LOTE,
+        // Simulacao: o arquivo inteiro de uma vez (ver MdCelSeiRN::LIMITE_SIMULACAO).
+        'limite' => $arrEstado['simular'] ? null : MdCelSeiRN::TAMANHO_LOTE,
+        'simular' => $arrEstado['simular'],
       );
 
       switch ($arrEstado['tipoCarga']) {
@@ -171,6 +176,7 @@ try {
     }
 
     $arrResultado = $arrEstado['resultado'];
+    $bolSimulacao = !empty($arrEstado['simular']);
     $numTotalLinhas = $arrEstado['total'];
     $numLinhasProcessadas = $arrEstado['offset'];
     $bolProcessamentoConcluido = ($numTotalLinhas !== null && $numLinhasProcessadas >= $numTotalLinhas);
@@ -183,6 +189,11 @@ try {
     }
   }
 } catch (Exception $e) {
+  // Erro no meio da carga (arquivo de tipo errado, simulacao acima do teto): apaga o arquivo temporario
+  // junto com o estado, senao ele fica orfao no diretorio de upload.
+  if (isset($_SESSION[CHAVE_ESTADO_SESSAO]['arquivo']) && file_exists($_SESSION[CHAVE_ESTADO_SESSAO]['arquivo'])) {
+    unlink($_SESSION[CHAVE_ESTADO_SESSAO]['arquivo']);
+  }
   unset($_SESSION[CHAVE_ESTADO_SESSAO]);
   PaginaSEI::getInstance()->processarExcecao($e);
 }
@@ -198,7 +209,7 @@ if ($arrResultado !== null) {
   $numOk = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSeiRN::STA_OK; }));
   $numPulado = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSeiRN::STA_PULADO; }));
   $numErro = count(array_filter($arrResultado, function ($r) { return $r['status'] === MdCelSeiRN::STA_ERRO; }));
-  $strCaptionTabela = ($bolProcessamentoConcluido ? 'Resultado' : 'Resultado parcial (até agora)')
+  $strCaptionTabela = ($bolSimulacao ? 'Simulação, nada foi gravado' : ($bolProcessamentoConcluido ? 'Resultado' : 'Resultado parcial (até agora)'))
     . ': ' . $numOk . ' atualizado(s)/cadastrado(s), ' . $numPulado . ' pulado(s) (já existiam), ' . $numErro . ' com erro';
   $strResultado .= '<table width="99%" class="infraTable" summary="Resultado da carga por linha do arquivo">' . "\n";
   $strResultado .= '<caption class="infraCaption">' . PaginaSEI::tratarHTML($strCaptionTabela) . '</caption>';
@@ -249,6 +260,8 @@ PaginaSEI::getInstance()->abrirStyle();
 #filArquivo {position:absolute;left:0%;top:45%;width:90%;}
 
 #lblAviso {position:absolute;left:0%;top:5%;width:90%;}
+
+#lblSimular {margin-left:.3em;}
 
 #lblProcessando {position:absolute;left:0%;top:5%;}
 #lblProgresso {position:absolute;left:0%;top:40%;width:90%;}
@@ -354,8 +367,15 @@ if ($bolProcessamentoConcluido) {
     <input type="file" id="filArquivo" name="filArquivo" accept=".csv,.xlsx,.ods" tabindex="<?=PaginaSEI::getInstance()->getProxTabDados()?>" />
   </div>
 
+  <div id="divSimular" class="infraAreaDados" style="height:3em;">
+    <div id="divSinSimular" class="infraDivCheckbox">
+      <input type="checkbox" id="chkSimular" name="chkSimular" value="S"<?=($bolSimular ? ' checked="checked"' : '')?> class="infraCheckbox" tabindex="<?=PaginaSEI::getInstance()->getProxTabDados()?>" />
+      <label id="lblSimular" for="chkSimular" accesskey="" class="infraLabelCheckbox">Apenas simular: mostra o resultado esperado e não grava nada</label>
+    </div>
+  </div>
+
   <div id="divAviso" class="infraAreaDados" style="height:6em;">
-    <label id="lblAviso" class="infraLabelOpcional">Isto pode demorar um pouco, dependendo da quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento é feito em lotes de <?=MdCelSeiRN::TAMANHO_LOTE?>: esta tela se atualizará periodicamente com o progresso, sozinha, até concluir. Não feche nem atualize a janela manualmente enquanto isso. Tamanho máximo do arquivo: <?=$numLimiteUploadMb?> Mb.</label>
+    <label id="lblAviso" class="infraLabelOpcional">Isto pode demorar um pouco, dependendo da quantidade de linhas do arquivo. Se o arquivo tiver muitas linhas, o processamento é feito em lotes de <?=MdCelSeiRN::TAMANHO_LOTE?>: esta tela se atualizará periodicamente com o progresso, sozinha, até concluir. Não feche nem atualize a janela manualmente enquanto isso. Tamanho máximo do arquivo: <?=$numLimiteUploadMb?> Mb. Com a simulação marcada, o módulo processa o arquivo inteiro de uma vez, até <?=MdCelSeiRN::LIMITE_SIMULACAO?> linhas, e desfaz tudo no fim.</label>
   </div>
 <?php
 } else {

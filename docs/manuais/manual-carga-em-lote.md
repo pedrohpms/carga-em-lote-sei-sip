@@ -2,7 +2,7 @@
 
 # Manual do Carga em Lote
 
-Público: pessoas que operam as cargas em lote no SEI e no SIP. Alcance: as quatro cargas por arquivo do SEI, as duas cargas por arquivo do SIP e a tela Unidades pelo SIORG. Idioma: português do Brasil. Versão do módulo: 0.2.1 (revisão `d20648a` do repositório do módulo). Conferido em laboratório com o SEI 5.0.5.
+Público: pessoas que operam as cargas em lote no SEI e no SIP. Alcance: as quatro cargas por arquivo do SEI, as duas cargas por arquivo do SIP e a tela Unidades pelo SIORG. Idioma: português do Brasil. Versão do módulo: 0.3.0. Conferido em laboratório com o SEI 5.0.5.
 
 ## Sumário
 
@@ -18,6 +18,7 @@ Público: pessoas que operam as cargas em lote no SEI e no SIP. Alcance: as quat
 - [Como funciona uma carga](#como-funciona-uma-carga)
     - [Passos de qualquer carga por arquivo](#passos-de-qualquer-carga-por-arquivo)
     - [Lotes de 50 linhas](#lotes-de-50-linhas)
+    - [Simular uma carga](#simular-uma-carga)
     - [Ler o relatório](#ler-o-relatório)
 - [Cargas no SEI](#cargas-no-sei)
     - [Abrir a tela Carga em Lote no SEI](#abrir-a-tela-carga-em-lote-no-sei)
@@ -78,7 +79,7 @@ Algumas cargas dependem de dados que outra carga cria. Rode nesta ordem:
 
 ### Atenção antes de enviar
 
-O módulo grava no banco de verdade e esta versão não tem botão para desfazer uma carga. Confira o arquivo antes de enviar. As cargas que atualizam (Dados Complementares de Unidade e Contato de Usuários) regravam registros existentes, e as que criam (as demais) pulam o que já existe, sem sobrescrever.
+O módulo grava no banco de verdade e esta versão não tem botão para desfazer uma carga. Confira o arquivo antes de enviar e, no SEI, teste a carga com a opção de simulação (veja [Simular uma carga](#simular-uma-carga)). As cargas que atualizam (Dados Complementares de Unidade e Contato de Usuários) regravam registros existentes, e as que criam (as demais) pulam o que já existe, sem sobrescrever.
 
 ## Preparar o arquivo
 
@@ -120,17 +121,33 @@ A primeira linha é sempre o cabeçalho e nunca entra como dado. Antes de proces
 1. Abra a tela **Carga em Lote** do sistema onde a carga roda (SEI ou SIP).
 2. Escolha o **Tipo de carga**.
 3. Escolha o arquivo em **Arquivo (.csv, .xlsx ou .ods)**.
-4. Clique em **Processar** (atalho Alt+P).
-5. Acompanhe o progresso. Não feche nem atualize a janela.
-6. Leia o relatório ao final.
+4. No SEI, se quiser testar sem gravar, marque **Apenas simular: mostra o resultado esperado e não grava nada**.
+5. Clique em **Processar** (atalho Alt+P).
+6. Acompanhe o progresso. Não feche nem atualize a janela.
+7. Leia o relatório ao final.
 
 Se você clicar em **Processar** sem escolher o tipo, a tela avisa **Selecione o tipo de carga.** Sem arquivo, avisa **Selecione um arquivo .csv, .xlsx ou .ods.** Se o arquivo passar do limite de tamanho, a tela recusa antes do envio com a mensagem **O arquivo tem N Mb e excede o limite de N Mb.**
 
 ### Lotes de 50 linhas
 
-O módulo processa 50 linhas por vez. Em arquivos com mais de 50 linhas, a tela mostra **Processando** seguido do tipo de carga e a contagem de linhas já processadas, e se atualiza sozinha a cada poucos segundos até terminar. Enquanto isso, o relatório parcial aparece sob o texto de progresso.
+O módulo processa 50 linhas por vez. A simulação é a exceção: ela processa o arquivo inteiro de uma vez. Em arquivos com mais de 50 linhas, a tela mostra **Processando** seguido do tipo de carga e a contagem de linhas já processadas, e se atualiza sozinha a cada poucos segundos até terminar. Enquanto isso, o relatório parcial aparece sob o texto de progresso.
 
 ![Tela Carga em Lote do SEI processando 50 de 60 linhas, com o texto de progresso e o início do relatório parcial](imagens-manual-carga-em-lote/sei-progresso.png)
+
+### Simular uma carga
+
+Nas quatro cargas do SEI, marque **Apenas simular: mostra o resultado esperado e não grava nada** antes de clicar em **Processar**. O módulo roda a carga inteira, mostra o relatório linha a linha e desfaz tudo no fim, sem gravar nada. O título da tabela passa a dizer **Simulação, nada foi gravado**. Use a simulação para achar erros de coluna, de referência (órgão, cargo, assunto) e de dado antes de gravar de verdade.
+
+A simulação trata cada linha como a carga real trata: uma linha repetida no mesmo arquivo aparece como PULADO, porque a primeira linha simulada já vale para a segunda. Depois de simular, para gravar de verdade, desmarque a opção e envie o mesmo arquivo.
+
+![Simulação de uma carga de Assuntos, com a opção Apenas simular marcada e o relatório do resultado esperado](imagens-manual-carga-em-lote/sei-simulacao.png)
+
+A simulação tem limites:
+
+- Ela processa o arquivo inteiro de uma vez, em até 500 linhas. Com mais linhas, a tela recusa com a mensagem **A simulação aceita até 500 linhas e o arquivo tem N. Simule uma parte do arquivo ou rode a carga sem simular.**
+- As cargas do SIP e a tela Unidades pelo SIORG não têm simulação. O cadastro no SIP replica unidades e usuários para o SEI por um serviço do SEI, e o módulo não consegue desfazer essa parte.
+- A simulação desfaz o que o módulo grava no banco. Um módulo de terceiros que reaja à gravação com chamada externa não participa desse desfazer.
+- O SEI registra a simulação na auditoria, como as demais cargas, com a marca de simulação.
 
 ### Ler o relatório
 
@@ -453,6 +470,7 @@ Corrija o arquivo, volte e envie de novo.
 | Unidade "SIGLA" não encontrada no órgão "SIGLA". | A restrição cita uma unidade que o órgão não tem | Corrija a sigla da unidade |
 | Nenhuma Tabela de Assuntos marcada como atual foi encontrada. | O SEI não tem tabela atual | Marque uma tabela como atual |
 | Tabela de Assuntos "NOME" não encontrada. | A tabela escolhida não existe | Escolha uma tabela da lista |
+| A simulação aceita até 500 linhas e o arquivo tem N. Simule uma parte do arquivo ou rode a carga sem simular. | A simulação recebeu mais de 500 linhas | Simule uma parte do arquivo ou rode a carga sem simular |
 
 ### O SIORG não responde ou recusa o código
 

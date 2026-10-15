@@ -150,6 +150,12 @@ class MdCelSeiRN extends InfraRN {
   // balanceador, etc. - o modulo nao tem como detectar isso sozinho).
   const TAMANHO_LOTE = 50;
 
+  // Simulacao: o arquivo inteiro numa unica requisicao, dentro de uma transacao que sempre e
+  // desfeita no fim. Um unico pedido (e nao lotes) faz uma linha repetida no arquivo dar o mesmo
+  // resultado da carga real (a primeira cadastra, a segunda e pulada), e o teto evita estourar o
+  // tempo limite do servidor web, que o modulo nao controla.
+  const LIMITE_SIMULACAO = 500;
+
   protected function inicializarObjInfraIBanco(): InfraIBanco {
     return BancoSEI::getInstance();
   }
@@ -380,7 +386,49 @@ class MdCelSeiRN extends InfraRN {
       'arquivo' => basename($arrParametros['csv']),
       'offset' => $arrParametros['offset'] ?? 0,
       'limite' => $arrParametros['limite'] ?? null,
+      'simulacao' => !empty($arrParametros['simular']),
     ]);
+  }
+
+  /**
+   * Roda $fnLinha em cada linha e devolve o relatorio (OK/PULADO, ou ERRO com a mensagem). Com
+   * 'simular', abre uma transacao antes e a cancela no fim: as RN do core chamadas por dentro entram
+   * nela (InfraRN::__call so abre transacao se o banco ainda nao esta em uma) e nada fica gravado.
+   * Fora do banco nao ha o que desfazer: as RN usadas pelas 4 cargas nao chamam Solr, e-mail nem web service.
+   */
+  private function executarLinhas(array $arrParametros, array $arrLinhas, callable $fnLinha): array {
+    $bolSimular = !empty($arrParametros['simular']);
+    if ($bolSimular && count($arrLinhas) > self::LIMITE_SIMULACAO) {
+      throw new InfraException('A simulação aceita até ' . self::LIMITE_SIMULACAO . ' linhas e o arquivo tem ' . count($arrLinhas) . '. Simule uma parte do arquivo ou rode a carga sem simular.');
+    }
+    $objBanco = null;
+    $bolAbriuConexao = false;
+    if ($bolSimular) {
+      $objBanco = BancoSEI::getInstance();
+      $bolAbriuConexao = ($objBanco->getIdConexao() === null);
+      if ($bolAbriuConexao) {
+        $objBanco->abrirConexao();
+      }
+      $objBanco->abrirTransacao();
+    }
+    try {
+      $arrResultado = [];
+      foreach ($arrLinhas as $arrLinha) {
+        try {
+          $arrResultado[] = $fnLinha($arrLinha);
+        } catch (Exception $e) {
+          $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
+        }
+      }
+      return $arrResultado;
+    } finally {
+      if ($objBanco !== null) {
+        $objBanco->cancelarTransacao();
+        if ($bolAbriuConexao && !$objBanco->isBolManterConexaoAberta()) {
+          $objBanco->fecharConexao();
+        }
+      }
+    }
   }
 
   /**
@@ -433,14 +481,9 @@ class MdCelSeiRN extends InfraRN {
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
     $this->validarCabecalho($arrLoteInfo['cabecalho'], self::CABECALHO_UNIDADE_COMPLEMENTAR, 'Dados Complementares de Unidade');
-    $arrResultado = [];
-    foreach ($arrLoteInfo['linhas'] as $arrLinha) {
-      try {
-        $arrResultado[] = $this->processarUnidadesComplementarLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos']]);
-      } catch (Exception $e) {
-        $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
-      }
-    }
+    $arrResultado = $this->executarLinhas($arrParametros, $arrLoteInfo['linhas'], function ($arrLinha) {
+      return $this->processarUnidadesComplementarLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos']]);
+    });
     return ['resultado' => $arrResultado, 'total' => $arrLoteInfo['total'], 'processadas' => count($arrLoteInfo['linhas'])];
   }
 
@@ -610,14 +653,9 @@ class MdCelSeiRN extends InfraRN {
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
     $this->validarCabecalho($arrLoteInfo['cabecalho'], self::CABECALHO_CONTATO_USUARIOS, 'Contato de Usuários');
-    $arrResultado = [];
-    foreach ($arrLoteInfo['linhas'] as $arrLinha) {
-      try {
-        $arrResultado[] = $this->processarContatoUsuariosLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos']]);
-      } catch (Exception $e) {
-        $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
-      }
-    }
+    $arrResultado = $this->executarLinhas($arrParametros, $arrLoteInfo['linhas'], function ($arrLinha) {
+      return $this->processarContatoUsuariosLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos']]);
+    });
     return ['resultado' => $arrResultado, 'total' => $arrLoteInfo['total'], 'processadas' => count($arrLoteInfo['linhas'])];
   }
 
@@ -900,16 +938,11 @@ class MdCelSeiRN extends InfraRN {
     $strNomeTabela = $arrParametros['nomeTabela'] ?? null;
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
     $this->validarCabecalho($arrLoteInfo['cabecalho'], self::CABECALHO_ASSUNTOS, 'Assuntos');
-    $arrResultado = [];
     $objTabelaAssuntosDTO = $this->resolverTabelaAssuntos($strNomeTabela);
 
-    foreach ($arrLoteInfo['linhas'] as $arrLinha) {
-      try {
-        $arrResultado[] = $this->processarAssuntosLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos'], 'tabela' => $objTabelaAssuntosDTO]);
-      } catch (Exception $e) {
-        $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
-      }
-    }
+    $arrResultado = $this->executarLinhas($arrParametros, $arrLoteInfo['linhas'], function ($arrLinha) use ($objTabelaAssuntosDTO) {
+      return $this->processarAssuntosLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos'], 'tabela' => $objTabelaAssuntosDTO]);
+    });
     return ['resultado' => $arrResultado, 'total' => $arrLoteInfo['total'], 'processadas' => count($arrLoteInfo['linhas'])];
   }
 
@@ -1080,16 +1113,11 @@ class MdCelSeiRN extends InfraRN {
     $strCaminhoArquivo = $arrParametros['csv'];
     $arrLoteInfo = $this->lerLote($strCaminhoArquivo, $arrParametros['offset'] ?? 0, $arrParametros['limite'] ?? null);
     $this->validarCabecalho($arrLoteInfo['cabecalho'], self::CABECALHO_TIPOS_PROCESSO, 'Tipos de Processo');
-    $arrResultado = [];
     $objTabelaAssuntosDTO = $this->resolverTabelaAssuntos(null);
 
-    foreach ($arrLoteInfo['linhas'] as $arrLinha) {
-      try {
-        $arrResultado[] = $this->processarTiposProcessoLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos'], 'tabela' => $objTabelaAssuntosDTO]);
-      } catch (Exception $e) {
-        $arrResultado[] = $this->linhaResultado($arrLinha['linha'], self::STA_ERRO, $this->obterMensagemErro($e));
-      }
-    }
+    $arrResultado = $this->executarLinhas($arrParametros, $arrLoteInfo['linhas'], function ($arrLinha) use ($objTabelaAssuntosDTO) {
+      return $this->processarTiposProcessoLinha(['linha' => $arrLinha['linha'], 'campos' => $arrLinha['campos'], 'tabela' => $objTabelaAssuntosDTO]);
+    });
     return ['resultado' => $arrResultado, 'total' => $arrLoteInfo['total'], 'processadas' => count($arrLoteInfo['linhas'])];
   }
 
