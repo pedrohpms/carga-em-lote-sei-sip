@@ -17,6 +17,7 @@ Módulos de extensão para o Sistema Eletrônico de Informações - **SEI** e o 
 - [SEI — Assuntos](#sei-assuntos)
 - [SEI — Tipos de Processo](#sei-tipos)
 - [Status](#status)
+- [Versionamento e tags](#versionamento)
 
 ---
 
@@ -395,3 +396,22 @@ A versão 0.2.1 refaz as três telas no desenho das telas nativas do SEI e do SI
 A versão 0.3.0 acrescenta a opção de simulação nas quatro cargas do SEI. Foi validada pela tela real: o banco ficou igual depois de simular cada carga (contagens e hash dos registros), a linha repetida no arquivo aparece como PULADO, o teto de 500 linhas recusa o arquivo maior, e o modo normal segue igual (lotes de 50, PULADO e ERRO). O roteiro está em `carga-em-lote-testes/simulacao.py` no laboratório de origem. A simulação não foi testada com perfil restrito nem fora do MySQL.
 
 A validação foi feita somente em MySQL. O instalador declara suporte a Oracle, SQL Server e PostgreSQL, mas esses bancos não foram testados.
+
+<a name="versionamento"></a>
+## 🏷️ Versionamento e tags
+
+O módulo segue o SemVer na fase pré-release (0.y.z). O `y` sobe quando entra capacidade nova, e o `z` sobe em correção, robustez ou ajuste sem capacidade nova. O número fica sempre igual em `getVersao()` dos dois módulos, no `$versaoAtualDesteModulo` dos dois scripts de release e em `MD_CEL_VERSAO` de cada banco. Cada versão ganha um método `instalarvNNN()` novo, e o método de uma versão já aplicada nunca é editado. Cada versão publicada vira uma branch com o próprio número, mesclada na `main` por pull request. Pull request só de documentação não muda a versão.
+
+### Tags
+
+As tags marcam o estado de uma versão no commit de mesclagem do pull request dela na `main`.
+
+| Item | Regra |
+|---|---|
+| Formato | `v<0.y.z>-<estágio>`, com o estágio em minúsculas |
+| Estágios | `alpha`: testado só no laboratório de quem desenvolveu. `beta`: uma pessoa testou pela tela, em outro ambiente ou no mesmo. `rc`: candidata a produção, sem mudança de funcionalidade prevista. Sem sufixo: estável, só a partir da 1.0.0 |
+| Onde | No commit de mesclagem do pull request da versão na `main`, em tag anotada (`git tag -a`), criada depois da mesclagem. Nunca em ponta de branch |
+| Avançar de estágio | Tag nova no mesmo commit (`v0.3.0-alpha`, depois `v0.3.0-beta`). Tag publicada nunca se move. Se o código mudar depois da tag, a versão vira o próximo `z` |
+| Release | Um GitHub Release marcado como pre-release por tag, com o texto do pull request. Pull request só de documentação não ganha tag nem Release |
+
+Use letras minúsculas no estágio. Na ordenação do SemVer, `RC` vem antes de `alpha` e de `beta`, e `rc` vem depois deles, na ordem esperada.
