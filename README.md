@@ -87,6 +87,8 @@ O script do SEI só registra a versão (`MD_CEL_VERSAO`), porque o módulo não 
 5. Ao final, confira o relatório: quantas linhas foram cadastradas/atualizadas, quantas já existiam (puladas) e quantas deram erro, com a mensagem de erro específica de cada linha.
 6. Use o botão **Imprimir** (disponível só ao concluir) para gerar um PDF do relatório, se precisar de um registro da execução.
 
+O passo a passo completo, com capturas de tela de cada carga e da tela Unidades pelo SIORG, está no [manual do operador](docs/manuais/manual-carga-em-lote.md).
+
 <a name="orientacoes-gerais-e-observacoes"></a>
 ## 📝 Orientações gerais e observações
 
