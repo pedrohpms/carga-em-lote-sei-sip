@@ -357,9 +357,9 @@ Na figura, o operador marcou 25 unidades que já estavam importadas. Por isso o 
 
 O relatório ao final mostra o órgão do SIP, o órgão no SIORG, a hierarquia de destino, o operador, o início e o fim, a contagem de unidades importadas e não importadas, e uma tabela com uma linha por unidade, com **Situação** Importada ou Não importada e a mensagem do motivo. Cada unidade importada fica registrada na auditoria do SIP.
 
-> **[NECESSÁRIO INSERIR IMAGEM DE PRINT DA TELA DESTA FUNCIONALIDADE]** - **caminho no sistema**: Unidades pelo SIORG
+![Relatório de uma importação concluída no órgão de teste ZTE, com as unidades ZTE_ASCOM e CD-ENAP importadas](imagens-manual-carga-em-lote/siorg-relatorio-importacao.png)
 
-Capture o relatório de uma importação concluída com unidades importadas, no perfil do operador do SIORG no SIP, com o cabeçalho do relatório e a tabela por unidade visíveis. Faça a captura em um órgão de teste, depois de importar de verdade, porque o laboratório não importa unidades novas só para ilustrar.
+Na figura, a unidade ASCOM entrou como ZTE_ASCOM, porque a sigla ASCOM já existia em outro órgão. A coluna **Detalhe** informa o identificador da unidade no SIP e a sigla que ela tem no SIORG.
 
 ### Atualizar sigla e nome
 
@@ -371,9 +371,13 @@ Quando uma unidade já importada muda de sigla ou de nome no SIORG, a situação
 
 Sem nenhuma unidade marcada, a tela avisa **Marque as unidades divergentes que quer atualizar.** O botão **Atualizar marcadas** só aparece quando existe alguma unidade atualizável. A tela não atualiza a posição na hierarquia: ela só aponta a diferença no **Detalhe**. Quando a nova sigla já está em uso ou passa de 30 caracteres, o **Detalhe** avisa para atualizar à mão.
 
-> **[NECESSÁRIO INSERIR IMAGEM DE PRINT DA TELA DESTA FUNCIONALIDADE]** - **caminho no sistema**: Unidades pelo SIORG
+![Consulta do SIORG com a unidade Audin divergente e a caixa de atualização marcada](imagens-manual-carga-em-lote/siorg-atualizar.png)
 
-Capture a consulta de um órgão com uma unidade divergente em sigla ou nome, com a caixa de seleção de atualização e o botão **Atualizar marcadas** visíveis, no perfil do operador do SIORG com o recurso de atualizar.
+Na figura, a unidade Audin tem no SIP a sigla e o nome diferentes dos do SIORG. A coluna **Detalhe** mostra o que está no SIP, e a caixa de atualização aparece marcada. O botão **Atualizar marcadas** fica na barra de botões, no alto da tela.
+
+Depois da atualização, a tela mostra o relatório com a situação **Atualizada** e, no **Detalhe**, o que a unidade tinha antes no SIP.
+
+![Relatório de atualização de sigla e nome com a unidade Audin atualizada](imagens-manual-carga-em-lote/siorg-relatorio-atualizacao.png)
 
 ### Desativar unidades que saíram da estrutura
 
@@ -405,9 +409,9 @@ Sem unidade apta marcada, a tela avisa **Nenhuma unidade apta marcada para desat
 
 Imprima o relatório ao final: ele registra o que a tela desativou e o que ela não desativou. Cada desativação fica na auditoria do SIP. Para reativar uma unidade, use no SIP **Unidades > Reativar** e depois reponha a posição dela em **Hierarquias**.
 
-> **[NECESSÁRIO INSERIR IMAGEM DE PRINT DA TELA DESTA FUNCIONALIDADE]** - **caminho no sistema**: Unidades pelo SIORG
+![Relatório de uma desativação concluída, com a unidade Coger desativada no SIP e no SEI](imagens-manual-carga-em-lote/siorg-relatorio-desativacao.png)
 
-Capture o relatório de uma desativação concluída, no perfil do operador do SIORG com o recurso de desativar, com o cabeçalho do relatório e a tabela por unidade visíveis. Faça a captura em um ambiente de teste, porque a desativação altera o SIP e o SEI.
+Na figura, a unidade Coger saiu da estrutura do SIORG e o módulo a desativou no SIP e no SEI. A coluna **Detalhe** traz a mensagem **desativada no SIP e no SEI** e o identificador da unidade.
 
 ## Solução de problemas
 
